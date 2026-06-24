@@ -1,0 +1,99 @@
+-- ============================================================
+-- SUPER FLING & AIMBOT V34 - CHỈ AIM KHI ĐỊCH < 20 STUDS
+-- ============================================================
+
+local UserInputService = game:GetService("UserInputService")
+local Players = game:GetService("Players")
+local Workspace = game:GetService("Workspace")
+local RunService = game:GetService("RunService")
+local Debris = game:GetService("Debris")
+
+local LocalPlayer = Players.LocalPlayer
+local Camera = Workspace.CurrentCamera
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+
+-- CẤU HÌNH: PHẠM VI AIM CỰC GẦN (20 STUDS)
+local FOV_RADIUS = 150 
+local MAX_DISTANCE = 20 
+
+-- TẠO GIAO DIỆN (NÚT + VÒNG TRÒN)
+local screenGui = Instance.new("ScreenGui", PlayerGui)
+screenGui.Name = "FlingControlV34"
+screenGui.ResetOnSpawn = false
+
+local fovCircle = Instance.new("ImageLabel", screenGui)
+fovCircle.Size = UDim2.new(0, 300, 0, 300)
+fovCircle.Position = UDim2.new(0.5, -150, 0.5, -150)
+fovCircle.BackgroundTransparency = 1
+fovCircle.Image = "rbxassetid://463773950"
+fovCircle.ImageColor3 = Color3.fromRGB(255, 255, 0) 
+fovCircle.ImageTransparency = 0.5
+
+-- HÀM TÌM ĐỊCH TRONG VÒNG VÀ GẦN BẠN
+local function getClosestPlayerSmart()
+    local closest, shortestDist = nil, 150
+    local centerScreen = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+    local myPos = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") and LocalPlayer.Character.HumanoidRootPart.Position
+    
+    if not myPos then return nil end
+
+    for _, p in pairs(Players:GetPlayers()) do
+        if p ~= LocalPlayer and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+            local head = p.Character:FindFirstChild("Head")
+            local distFromMe = (myPos - p.Character.HumanoidRootPart.Position).Magnitude
+            
+            -- ĐIỀU KIỆN: PHẢI GẦN (DƯỚI 20 STUDS)
+            if head and distFromMe <= MAX_DISTANCE then
+                local screenPos, onScreen = Camera:WorldToViewportPoint(head.Position)
+                if onScreen then
+                    local distFromCenter = (Vector2.new(screenPos.X, screenPos.Y) - centerScreen).Magnitude
+                    if distFromCenter <= shortestDist then
+                        shortestDist = distFromCenter
+                        closest = p
+                    end
+                end
+            end
+        end
+    end
+    return closest
+end
+
+-- VÒNG LẶP CHÍNH
+RunService.RenderStepped:Connect(function()
+    pcall(function()
+        local isHolding = Workspace:FindFirstChild("GrabParts")
+        
+        -- Logic Aim: Chỉ Aim khi địch vào vòng FOV và khoảng cách < 20
+        local target = getClosestPlayerSmart()
+        if target and not isHolding then
+            Camera.CFrame = CFrame.lookAt(Camera.CFrame.Position, target.Character.Head.Position)
+            fovCircle.ImageColor3 = Color3.fromRGB(0, 255, 0) -- Xanh: Đã khóa
+        else
+            fovCircle.ImageColor3 = Color3.fromRGB(255, 255, 0) -- Vàng: Chờ
+        end
+        
+        fovCircle.Visible = not isHolding
+    end)
+end)
+
+-- CƠ CHẾ FLING GỐC
+Workspace.ChildAdded:Connect(function(child)
+    if child.Name == "GrabParts" then
+        local grabPart = child:WaitForChild("GrabPart", 2)
+        if grabPart then
+            local weld = grabPart:WaitForChild("WeldConstraint", 2)
+            if weld and weld.Part1 then
+                local bodyVelocity = Instance.new("BodyVelocity", weld.Part1)
+                child:GetPropertyChangedSignal("Parent"):Connect(function()
+                    if not child.Parent then
+                        bodyVelocity.MaxForce = Vector3.new(1e9, 1e9, 1e9)
+                        bodyVelocity.Velocity = Camera.CFrame.LookVector * 6000
+                        Debris:AddItem(bodyVelocity, 1)
+                    end
+                end)
+            end
+        end
+    end
+end)
+
+print("=== ĐÃ CHỐT V34: PHẠM VI AIM 20 STUDS ===")
