@@ -1,0 +1,759 @@
+--[[
+    ╔══════════════════════════════════════════════════╗
+    ║   📱🖥️ 120 FOV + PREMIUM MENU SYSTEM    ║
+    ║       "Wider View, Premium Style"             ║
+    ╚══════════════════════════════════════════════════╝
+]]
+
+-- // SERVICES
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+
+-- // VARIABLES
+local LocalPlayer = Players.LocalPlayer
+local Camera = workspace.CurrentCamera
+local FOV_ACTIVE = false
+local DEFAULT_FOV = 70
+local TARGET_FOV = 120
+local currentFOV = DEFAULT_FOV
+local isMobile = false
+local menuVisible = false
+
+-- // KIỂM TRA NỀN TẢNG
+isMobile = UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled and not UserInputService.MouseEnabled
+
+-- // CHỜ PLAYER SPAWN
+if not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("Humanoid") then
+    LocalPlayer.CharacterAdded:Wait()
+end
+
+-- // ĐẢM BẢO CAMERA TỒN TẠI
+repeat task.wait() until Camera
+
+-- // ==================== FOV FUNCTIONS ====================
+local function SetFOV(targetFOV, speed)
+    speed = speed or 0.15
+    local tweenInfo = TweenInfo.new(speed, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+    local tween = TweenService:Create(Camera, tweenInfo, {FieldOfView = targetFOV})
+    tween:Play()
+    currentFOV = targetFOV
+end
+
+local function Toggle120FOV()
+    FOV_ACTIVE = not FOV_ACTIVE
+    
+    if FOV_ACTIVE then
+        SetFOV(TARGET_FOV, 0.2)
+    else
+        SetFOV(DEFAULT_FOV, 0.15)
+    end
+end
+
+local function DynamicFOV()
+    local humanoid = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid")
+    
+    if humanoid and FOV_ACTIVE then
+        local velocity = humanoid.MoveDirection.Magnitude
+        local dynamicFOV = TARGET_FOV + (velocity * 5)
+        dynamicFOV = math.clamp(dynamicFOV, TARGET_FOV, 130)
+        
+        if math.abs(Camera.FieldOfView - dynamicFOV) > 0.5 then
+            Camera.FieldOfView = Camera.FieldOfView:Lerp(dynamicFOV, 0.1)
+        end
+    end
+end
+
+RunService.RenderStepped:Connect(function()
+    if FOV_ACTIVE then
+        DynamicFOV()
+    end
+end)
+
+-- // ==================== MAIN MENU GUI ====================
+local function CreateMainMenu()
+    local ScreenGui = Instance.new("ScreenGui")
+    ScreenGui.Name = "FOV_Menu_System"
+    ScreenGui.ResetOnSpawn = false
+    ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+    
+    -- // ========== TOGGLE BUTTON ==========
+    local ToggleBtn = Instance.new("TextButton")
+    ToggleBtn.Name = "MenuToggle"
+    ToggleBtn.Size = UDim2.new(0, 50, 0, 50)
+    ToggleBtn.BackgroundColor3 = Color3.fromRGB(15, 15, 25)
+    ToggleBtn.Text = "⚙️"
+    ToggleBtn.TextSize = 24
+    ToggleBtn.BorderSizePixel = 0
+    ToggleBtn.AutoButtonColor = false
+    ToggleBtn.ZIndex = 15
+    ToggleBtn.Parent = ScreenGui
+    
+    if isMobile then
+        ToggleBtn.Position = UDim2.new(1, -65, 0, 15)
+    else
+        ToggleBtn.Position = UDim2.new(0, 15, 0, 15)
+    end
+    
+    local ToggleCorner = Instance.new("UICorner")
+    ToggleCorner.CornerRadius = UDim.new(0, 14)
+    ToggleCorner.Parent = ToggleBtn
+    
+    local ToggleStroke = Instance.new("UIStroke")
+    ToggleStroke.Color = Color3.fromRGB(100, 100, 120)
+    ToggleStroke.Thickness = 2
+    ToggleStroke.Parent = ToggleBtn
+    
+    -- // ========== MAIN MENU CONTAINER ==========
+    local MainMenu = Instance.new("Frame")
+    MainMenu.Name = "MainMenu"
+    MainMenu.Size = UDim2.new(0, 280, 0, 380)
+    MainMenu.BackgroundColor3 = Color3.fromRGB(15, 15, 25)
+    MainMenu.BorderSizePixel = 0
+    MainMenu.Visible = false
+    MainMenu.ZIndex = 20
+    MainMenu.Parent = ScreenGui
+    
+    if isMobile then
+        MainMenu.Position = UDim2.new(0.5, -140, 0.5, -190)
+        MainMenu.AnchorPoint = Vector2.new(0.5, 0.5)
+    else
+        MainMenu.Position = UDim2.new(0, 75, 0, 15)
+    end
+    
+    local MenuCorner = Instance.new("UICorner")
+    MenuCorner.CornerRadius = UDim.new(0, 16)
+    MenuCorner.Parent = MainMenu
+    
+    local MenuStroke = Instance.new("UIStroke")
+    MenuStroke.Color = Color3.fromRGB(0, 255, 200)
+    MenuStroke.Thickness = 1.5
+    MenuStroke.Transparency = 0.5
+    MenuStroke.Parent = MainMenu
+    
+    -- // ========== MENU HEADER ==========
+    local Header = Instance.new("Frame")
+    Header.Name = "Header"
+    Header.Size = UDim2.new(1, 0, 0, 50)
+    Header.BackgroundColor3 = Color3.fromRGB(20, 20, 35)
+    Header.BorderSizePixel = 0
+    Header.ZIndex = 21
+    Header.Parent = MainMenu
+    
+    local HeaderCorner = Instance.new("UICorner")
+    HeaderCorner.CornerRadius = UDim.new(0, 16)
+    HeaderCorner.Parent = Header
+    
+    -- Fix bottom corners
+    local HeaderBottomFix = Instance.new("Frame")
+    HeaderBottomFix.Size = UDim2.new(1, 0, 0.5, 0)
+    HeaderBottomFix.Position = UDim2.new(0, 0, 0.5, 0)
+    HeaderBottomFix.BackgroundColor3 = Color3.fromRGB(20, 20, 35)
+    HeaderBottomFix.BorderSizePixel = 0
+    HeaderBottomFix.ZIndex = 21
+    HeaderBottomFix.Parent = Header
+    
+    local HeaderGradient = Instance.new("UIGradient", Header)
+    HeaderGradient.Color = ColorSequence.new({
+        ColorSequenceKeypoint.new(0, Color3.fromRGB(0, 255, 200)),
+        ColorSequenceKeypoint.new(0.5, Color3.fromRGB(100, 200, 255)),
+        ColorSequenceKeypoint.new(1, Color3.fromRGB(180, 100, 255))
+    })
+    HeaderGradient.Rotation = 90
+    
+    local TitleIcon = Instance.new("TextLabel")
+    TitleIcon.Size = UDim2.new(0, 30, 0, 30)
+    TitleIcon.Position = UDim2.new(0, 15, 0, 10)
+    TitleIcon.BackgroundTransparency = 1
+    TitleIcon.Text = "🔭"
+    TitleIcon.TextSize = 20
+    TitleIcon.ZIndex = 22
+    TitleIcon.Parent = Header
+    
+    local TitleText = Instance.new("TextLabel")
+    TitleText.Size = UDim2.new(0, 180, 0, 30)
+    TitleText.Position = UDim2.new(0, 50, 0, 10)
+    TitleText.BackgroundTransparency = 1
+    TitleText.Text = "FOV SETTINGS"
+    TitleText.TextColor3 = Color3.fromRGB(255, 255, 255)
+    TitleText.TextSize = 18
+    TitleText.Font = Enum.Font.GothamBlack
+    TitleText.TextXAlignment = Enum.TextXAlignment.Left
+    TitleText.ZIndex = 22
+    TitleText.Parent = Header
+    
+    -- Close button
+    local CloseBtn = Instance.new("TextButton")
+    CloseBtn.Size = UDim2.new(0, 30, 0, 30)
+    CloseBtn.Position = UDim2.new(1, -40, 0, 10)
+    CloseBtn.BackgroundColor3 = Color3.fromRGB(255, 50, 50)
+    CloseBtn.Text = "✕"
+    CloseBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    CloseBtn.TextSize = 16
+    CloseBtn.Font = Enum.Font.GothamBold
+    CloseBtn.BorderSizePixel = 0
+    CloseBtn.AutoButtonColor = false
+    CloseBtn.ZIndex = 22
+    CloseBtn.Parent = Header
+    
+    local CloseCorner = Instance.new("UICorner")
+    CloseCorner.CornerRadius = UDim.new(0, 8)
+    CloseCorner.Parent = CloseBtn
+    
+    -- // ========== MENU CONTENT ==========
+    local ContentFrame = Instance.new("Frame")
+    ContentFrame.Name = "Content"
+    ContentFrame.Size = UDim2.new(1, -30, 1, -80)
+    ContentFrame.Position = UDim2.new(0, 15, 0, 65)
+    ContentFrame.BackgroundTransparency = 1
+    ContentFrame.BorderSizePixel = 0
+    ContentFrame.ZIndex = 21
+    ContentFrame.Parent = MainMenu
+    
+    local ContentList = Instance.new("UIListLayout")
+    ContentList.Padding = UDim.new(0, 10)
+    ContentList.HorizontalAlignment = Enum.HorizontalAlignment.Center
+    ContentList.SortOrder = Enum.SortOrder.LayoutOrder
+    ContentList.Parent = ContentFrame
+    
+    -- // ========== FOV STATUS SECTION ==========
+    local StatusSection = Instance.new("Frame")
+    StatusSection.Name = "StatusSection"
+    StatusSection.Size = UDim2.new(1, 0, 0, 70)
+    StatusSection.BackgroundColor3 = Color3.fromRGB(20, 20, 35)
+    StatusSection.BorderSizePixel = 0
+    StatusSection.ZIndex = 21
+    StatusSection.Parent = ContentFrame
+    
+    local StatusCorner = Instance.new("UICorner")
+    StatusCorner.CornerRadius = UDim.new(0, 10)
+    StatusCorner.Parent = StatusSection
+    
+    local StatusIcon = Instance.new("TextLabel")
+    StatusIcon.Size = UDim2.new(0, 40, 0, 40)
+    StatusIcon.Position = UDim2.new(0, 15, 0, 15)
+    StatusIcon.BackgroundTransparency = 1
+    StatusIcon.Text = "👁️"
+    StatusIcon.TextSize = 28
+    StatusIcon.ZIndex = 22
+    StatusIcon.Parent = StatusSection
+    
+    local StatusLabel = Instance.new("TextLabel")
+    StatusLabel.Name = "StatusLabel"
+    StatusLabel.Size = UDim2.new(0, 150, 0, 25)
+    StatusLabel.Position = UDim2.new(0, 65, 0, 10)
+    StatusLabel.BackgroundTransparency = 1
+    StatusLabel.Text = "Current FOV: 70"
+    StatusLabel.TextColor3 = Color3.fromRGB(200, 200, 220)
+    StatusLabel.TextSize = 14
+    StatusLabel.Font = Enum.Font.GothamBold
+    StatusLabel.TextXAlignment = Enum.TextXAlignment.Left
+    StatusLabel.ZIndex = 22
+    StatusLabel.Parent = StatusSection
+    
+    local StatusIndicator = Instance.new("Frame")
+    StatusIndicator.Name = "StatusIndicator"
+    StatusIndicator.Size = UDim2.new(0, 12, 0, 12)
+    StatusIndicator.Position = UDim2.new(0, 65, 0, 42)
+    StatusIndicator.BackgroundColor3 = Color3.fromRGB(255, 50, 50)
+    StatusIndicator.BorderSizePixel = 0
+    StatusIndicator.ZIndex = 22
+    StatusIndicator.Parent = StatusSection
+    
+    local IndicatorCorner = Instance.new("UICorner")
+    IndicatorCorner.CornerRadius = UDim.new(1, 0)
+    IndicatorCorner.Parent = StatusIndicator
+    
+    local StatusText = Instance.new("TextLabel")
+    StatusText.Name = "StatusText"
+    StatusText.Size = UDim2.new(0, 100, 0, 20)
+    StatusText.Position = UDim2.new(0, 85, 0, 38)
+    StatusText.BackgroundTransparency = 1
+    StatusText.Text = "DISABLED"
+    StatusText.TextColor3 = Color3.fromRGB(255, 50, 50)
+    StatusText.TextSize = 11
+    StatusText.Font = Enum.Font.GothamBold
+    StatusText.TextXAlignment = Enum.TextXAlignment.Left
+    StatusText.ZIndex = 22
+    StatusText.Parent = StatusSection
+    
+    -- // ========== FOV SLIDER ==========
+    local SliderSection = Instance.new("Frame")
+    SliderSection.Name = "SliderSection"
+    SliderSection.Size = UDim2.new(1, 0, 0, 70)
+    SliderSection.BackgroundColor3 = Color3.fromRGB(20, 20, 35)
+    SliderSection.BorderSizePixel = 0
+    SliderSection.ZIndex = 21
+    SliderSection.Parent = ContentFrame
+    
+    local SliderCorner = Instance.new("UICorner")
+    SliderCorner.CornerRadius = UDim.new(0, 10)
+    SliderCorner.Parent = SliderSection
+    
+    local SliderLabel = Instance.new("TextLabel")
+    SliderLabel.Size = UDim2.new(1, -30, 0, 20)
+    SliderLabel.Position = UDim2.new(0, 15, 0, 8)
+    SliderLabel.BackgroundTransparency = 1
+    SliderLabel.Text = "Custom FOV: 120"
+    SliderLabel.TextColor3 = Color3.fromRGB(200, 200, 220)
+    SliderLabel.TextSize = 12
+    SliderLabel.Font = Enum.Font.Gotham
+    SliderLabel.TextXAlignment = Enum.TextXAlignment.Left
+    SliderLabel.ZIndex = 22
+    SliderLabel.Parent = SliderSection
+    
+    local FOVSlider = Instance.new("Frame")
+    FOVSlider.Name = "FOVSlider"
+    FOVSlider.Size = UDim2.new(1, -30, 0, 6)
+    FOVSlider.Position = UDim2.new(0, 15, 0, 35)
+    FOVSlider.BackgroundColor3 = Color3.fromRGB(40, 40, 55)
+    FOVSlider.BorderSizePixel = 0
+    FOVSlider.ZIndex = 22
+    FOVSlider.Parent = SliderSection
+    
+    local SliderFillCorner = Instance.new("UICorner")
+    SliderFillCorner.CornerRadius = UDim.new(0, 3)
+    SliderFillCorner.Parent = FOVSlider
+    
+    local SliderFill = Instance.new("Frame")
+    SliderFill.Name = "SliderFill"
+    SliderFill.Size = UDim2.new(0.5, 0, 1, 0)
+    SliderFill.BackgroundColor3 = Color3.fromRGB(0, 255, 200)
+    SliderFill.BorderSizePixel = 0
+    SliderFill.ZIndex = 23
+    SliderFill.Parent = FOVSlider
+    
+    local FillCorner = Instance.new("UICorner")
+    FillCorner.CornerRadius = UDim.new(0, 3)
+    FillCorner.Parent = SliderFill
+    
+    local FillGradient = Instance.new("UIGradient", SliderFill)
+    FillGradient.Color = ColorSequence.new({
+        ColorSequenceKeypoint.new(0, Color3.fromRGB(0, 255, 200)),
+        ColorSequenceKeypoint.new(1, Color3.fromRGB(180, 100, 255))
+    })
+    
+    local SliderKnob = Instance.new("TextButton")
+    SliderKnob.Name = "SliderKnob"
+    SliderKnob.Size = UDim2.new(0, 18, 0, 18)
+    SliderKnob.Position = UDim2.new(0.5, -9, 0.5, -9)
+    SliderKnob.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    SliderKnob.Text = ""
+    SliderKnob.BorderSizePixel = 0
+    SliderKnob.AutoButtonColor = false
+    SliderKnob.ZIndex = 24
+    SliderKnob.Parent = FOVSlider
+    
+    local KnobCorner = Instance.new("UICorner")
+    KnobCorner.CornerRadius = UDim.new(1, 0)
+    KnobCorner.Parent = SliderKnob
+    
+    local KnobStroke = Instance.new("UIStroke")
+    KnobStroke.Color = Color3.fromRGB(0, 255, 200)
+    KnobStroke.Thickness = 2
+    KnobStroke.Parent = SliderKnob
+    
+    -- // ========== QUICK TOGGLE BUTTON ==========
+    local ToggleSection = Instance.new("Frame")
+    ToggleSection.Name = "ToggleSection"
+    ToggleSection.Size = UDim2.new(1, 0, 0, 50)
+    ToggleSection.BackgroundColor3 = Color3.fromRGB(20, 20, 35)
+    ToggleSection.BorderSizePixel = 0
+    ToggleSection.ZIndex = 21
+    ToggleSection.Parent = ContentFrame
+    
+    local ToggleSecCorner = Instance.new("UICorner")
+    ToggleSecCorner.CornerRadius = UDim.new(0, 10)
+    ToggleSecCorner.Parent = ToggleSection
+    
+    local Toggle120Btn = Instance.new("TextButton")
+    Toggle120Btn.Name = "Toggle120Btn"
+    Toggle120Btn.Size = UDim2.new(1, -20, 0, 36)
+    Toggle120Btn.Position = UDim2.new(0, 10, 0, 7)
+    Toggle120Btn.BackgroundColor3 = Color3.fromRGB(0, 255, 100)
+    Toggle120Btn.Text = "🔭 ENABLE 120 FOV"
+    Toggle120Btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    Toggle120Btn.TextSize = 14
+    Toggle120Btn.Font = Enum.Font.GothamBold
+    Toggle120Btn.BorderSizePixel = 0
+    Toggle120Btn.AutoButtonColor = false
+    Toggle120Btn.ZIndex = 22
+    Toggle120Btn.Parent = ToggleSection
+    
+    local ToggleBtnCorner = Instance.new("UICorner")
+    ToggleBtnCorner.CornerRadius = UDim.new(0, 8)
+    ToggleBtnCorner.Parent = Toggle120Btn
+    
+    -- // ========== FOV PRESETS ==========
+    local PresetsSection = Instance.new("Frame")
+    PresetsSection.Name = "PresetsSection"
+    PresetsSection.Size = UDim2.new(1, 0, 0, 90)
+    PresetsSection.BackgroundColor3 = Color3.fromRGB(20, 20, 35)
+    PresetsSection.BorderSizePixel = 0
+    PresetsSection.ZIndex = 21
+    PresetsSection.Parent = ContentFrame
+    
+    local PresetsCorner = Instance.new("UICorner")
+    PresetsCorner.CornerRadius = UDim.new(0, 10)
+    PresetsCorner.Parent = PresetsSection
+    
+    local PresetsLabel = Instance.new("TextLabel")
+    PresetsLabel.Size = UDim2.new(1, -20, 0, 18)
+    PresetsLabel.Position = UDim2.new(0, 10, 0, 8)
+    PresetsLabel.BackgroundTransparency = 1
+    PresetsLabel.Text = "Quick Presets:"
+    PresetsLabel.TextColor3 = Color3.fromRGB(150, 150, 170)
+    PresetsLabel.TextSize = 11
+    PresetsLabel.Font = Enum.Font.Gotham
+    PresetsLabel.TextXAlignment = Enum.TextXAlignment.Left
+    PresetsLabel.ZIndex = 22
+    PresetsLabel.Parent = PresetsSection
+    
+    local presetValues = {70, 90, 100, 110, 120}
+    local presetButtons = {}
+    
+    for i, fov in ipairs(presetValues) do
+        local PresetBtn = Instance.new("TextButton")
+        PresetBtn.Name = "Preset_" .. fov
+        PresetBtn.Size = UDim2.new(0, 44, 0, 30)
+        PresetBtn.Position = UDim2.new(0, 10 + ((i-1) * 50), 0, 32)
+        PresetBtn.BackgroundColor3 = Color3.fromRGB(30, 30, 45)
+        PresetBtn.Text = fov .. "°"
+        PresetBtn.TextColor3 = Color3.fromRGB(200, 200, 220)
+        PresetBtn.TextSize = 12
+        PresetBtn.Font = Enum.Font.GothamBold
+        PresetBtn.BorderSizePixel = 0
+        PresetBtn.AutoButtonColor = false
+        PresetBtn.ZIndex = 22
+        PresetBtn.Parent = PresetsSection
+        
+        local PresetCorner = Instance.new("UICorner")
+        PresetCorner.CornerRadius = UDim.new(0, 6)
+        PresetCorner.Parent = PresetBtn
+        
+        presetButtons[fov] = PresetBtn
+        
+        PresetBtn.MouseButton1Click:Connect(function()
+            TARGET_FOV = fov
+            SliderLabel.Text = "Custom FOV: " .. fov
+            SliderFill.Size = UDim2.new((fov - 50) / 130, 0, 1, 0)
+            SliderKnob.Position = UDim2.new((fov - 50) / 130, -9, 0.5, -9)
+            
+            if FOV_ACTIVE then
+                SetFOV(TARGET_FOV, 0.2)
+            end
+            
+            -- Highlight selected preset
+            for _, btn in pairs(presetButtons) do
+                btn.BackgroundColor3 = Color3.fromRGB(30, 30, 45)
+                btn.TextColor3 = Color3.fromRGB(200, 200, 220)
+            end
+            PresetBtn.BackgroundColor3 = Color3.fromRGB(0, 255, 200)
+            PresetBtn.TextColor3 = Color3.fromRGB(0, 0, 0)
+        end)
+    end
+    
+    -- // ========== DYNAMIC FOV TOGGLE ==========
+    local DynamicSection = Instance.new("Frame")
+    DynamicSection.Name = "DynamicSection"
+    DynamicSection.Size = UDim2.new(1, 0, 0, 40)
+    DynamicSection.BackgroundColor3 = Color3.fromRGB(20, 20, 35)
+    DynamicSection.BorderSizePixel = 0
+    DynamicSection.ZIndex = 21
+    DynamicSection.Parent = ContentFrame
+    
+    local DynamicCorner = Instance.new("UICorner")
+    DynamicCorner.CornerRadius = UDim.new(0, 10)
+    DynamicCorner.Parent = DynamicSection
+    
+    local DynamicLabel = Instance.new("TextLabel")
+    DynamicLabel.Size = UDim2.new(0, 150, 0, 24)
+    DynamicLabel.Position = UDim2.new(0, 15, 0, 8)
+    DynamicLabel.BackgroundTransparency = 1
+    DynamicLabel.Text = "🌊 Dynamic FOV"
+    DynamicLabel.TextColor3 = Color3.fromRGB(200, 200, 220)
+    DynamicLabel.TextSize = 13
+    DynamicLabel.Font = Enum.Font.Gotham
+    DynamicLabel.TextXAlignment = Enum.TextXAlignment.Left
+    DynamicLabel.ZIndex = 22
+    DynamicLabel.Parent = DynamicSection
+    
+    local DynamicToggle = Instance.new("TextButton")
+    DynamicToggle.Name = "DynamicToggle"
+    DynamicToggle.Size = UDim2.new(0, 40, 0, 20)
+    DynamicToggle.Position = UDim2.new(1, -55, 0, 10)
+    DynamicToggle.BackgroundColor3 = Color3.fromRGB(50, 50, 65)
+    DynamicToggle.Text = ""
+    DynamicToggle.BorderSizePixel = 0
+    DynamicToggle.AutoButtonColor = false
+    DynamicToggle.ZIndex = 22
+    DynamicToggle.Parent = DynamicSection
+    
+    local DynamicToggleCorner = Instance.new("UICorner")
+    DynamicToggleCorner.CornerRadius = UDim.new(1, 0)
+    DynamicToggleCorner.Parent = DynamicToggle
+    
+    local DynamicKnob = Instance.new("Frame")
+    DynamicKnob.Name = "DynamicKnob"
+    DynamicKnob.Size = UDim2.new(0, 16, 0, 16)
+    DynamicKnob.Position = UDim2.new(0, 2, 0.5, -8)
+    DynamicKnob.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    DynamicKnob.BorderSizePixel = 0
+    DynamicKnob.ZIndex = 23
+    DynamicKnob.Parent = DynamicToggle
+    
+    local DynamicKnobCorner = Instance.new("UICorner")
+    DynamicKnobCorner.CornerRadius = UDim.new(1, 0)
+    DynamicKnobCorner.Parent = DynamicKnob
+    
+    local dynamicEnabled = true
+    
+    DynamicToggle.MouseButton1Click:Connect(function()
+        dynamicEnabled = not dynamicEnabled
+        
+        if dynamicEnabled then
+            TweenService:Create(DynamicKnob, TweenInfo.new(0.2), {
+                Position = UDim2.new(1, -18, 0.5, -8)
+            }):Play()
+            TweenService:Create(DynamicToggle, TweenInfo.new(0.2), {
+                BackgroundColor3 = Color3.fromRGB(0, 255, 200)
+            }):Play()
+        else
+            TweenService:Create(DynamicKnob, TweenInfo.new(0.2), {
+                Position = UDim2.new(0, 2, 0.5, -8)
+            }):Play()
+            TweenService:Create(DynamicToggle, TweenInfo.new(0.2), {
+                BackgroundColor3 = Color3.fromRGB(50, 50, 65)
+            }):Play()
+        end
+    end)
+    
+    -- // ========== FUNCTIONS ==========
+    local function UpdateStatusUI()
+        if FOV_ACTIVE then
+            StatusLabel.Text = "Current FOV: " .. math.floor(Camera.FieldOfView)
+            StatusIndicator.BackgroundColor3 = Color3.fromRGB(0, 255, 100)
+            StatusText.Text = "ENABLED"
+            StatusText.TextColor3 = Color3.fromRGB(0, 255, 100)
+            Toggle120Btn.Text = "🔭 DISABLE 120 FOV"
+            Toggle120Btn.BackgroundColor3 = Color3.fromRGB(255, 50, 50)
+            ToggleStroke.Color = Color3.fromRGB(0, 255, 200)
+            MenuStroke.Color = Color3.fromRGB(0, 255, 200)
+        else
+            StatusLabel.Text = "Current FOV: " .. DEFAULT_FOV
+            StatusIndicator.BackgroundColor3 = Color3.fromRGB(255, 50, 50)
+            StatusText.Text = "DISABLED"
+            StatusText.TextColor3 = Color3.fromRGB(255, 50, 50)
+            Toggle120Btn.Text = "🔭 ENABLE 120 FOV"
+            Toggle120Btn.BackgroundColor3 = Color3.fromRGB(0, 255, 100)
+            ToggleStroke.Color = Color3.fromRGB(100, 100, 120)
+            MenuStroke.Color = Color3.fromRGB(100, 100, 120)
+        end
+    end
+    
+    local function ShowMenu()
+        menuVisible = true
+        MainMenu.Visible = true
+        MainMenu.Size = UDim2.new(0, 0, 0, 380)
+        
+        TweenService:Create(MainMenu, TweenInfo.new(0.3, Enum.EasingStyle.Back), {
+            Size = UDim2.new(0, 280, 0, 380)
+        }):Play()
+        
+        ToggleBtn.Text = "✕"
+    end
+    
+    local function HideMenu()
+        menuVisible = false
+        
+        TweenService:Create(MainMenu, TweenInfo.new(0.2, Enum.EasingStyle.Quad), {
+            Size = UDim2.new(0, 0, 0, 380)
+        }):Play()
+        
+        task.wait(0.2)
+        MainMenu.Visible = false
+        ToggleBtn.Text = "⚙️"
+    end
+    
+    -- // ========== SLIDER DRAG ==========
+    local dragging = false
+    
+    SliderKnob.MouseButton1Down:Connect(function()
+        dragging = true
+    end)
+    
+    UserInputService.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = false
+        end
+    end)
+    
+    UserInputService.InputChanged:Connect(function(input)
+        if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+            local mousePos = UserInputService:GetMouseLocation()
+            local sliderAbsPos = FOVSlider.AbsolutePosition
+            local sliderWidth = FOVSlider.AbsoluteSize.X
+            
+            local relativeX = math.clamp((mousePos.X - sliderAbsPos.X) / sliderWidth, 0, 1)
+            local newFOV = math.floor(50 + (relativeX * 130))
+            
+            TARGET_FOV = newFOV
+            SliderFill.Size = UDim2.new(relativeX, 0, 1, 0)
+            SliderKnob.Position = UDim2.new(relativeX, -9, 0.5, -9)
+            SliderLabel.Text = "Custom FOV: " .. newFOV
+            
+            if FOV_ACTIVE then
+                SetFOV(newFOV, 0.1)
+            end
+            
+            UpdateStatusUI()
+        end
+    end)
+    
+    -- // ========== BUTTON EVENTS ==========
+    ToggleBtn.MouseButton1Click:Connect(function()
+        if menuVisible then
+            HideMenu()
+        else
+            ShowMenu()
+        end
+    end)
+    
+    CloseBtn.MouseButton1Click:Connect(function()
+        HideMenu()
+    end)
+    
+    Toggle120Btn.MouseButton1Click:Connect(function()
+        Toggle120FOV()
+        UpdateStatusUI()
+        
+        -- Click animation
+        TweenService:Create(Toggle120Btn, TweenInfo.new(0.1), {
+            Size = UDim2.new(0.95, -20, 0, 34)
+        }):Play()
+        task.wait(0.1)
+        TweenService:Create(Toggle120Btn, TweenInfo.new(0.1), {
+            Size = UDim2.new(1, -20, 0, 36)
+        }):Play()
+    end)
+    
+    -- Hover effects for toggle button
+    ToggleBtn.MouseEnter:Connect(function()
+        TweenService:Create(ToggleBtn, TweenInfo.new(0.2), {
+            BackgroundColor3 = Color3.fromRGB(25, 25, 40)
+        }):Play()
+    end)
+    
+    ToggleBtn.MouseLeave:Connect(function()
+        TweenService:Create(ToggleBtn, TweenInfo.new(0.2), {
+            BackgroundColor3 = Color3.fromRGB(15, 15, 25)
+        }):Play()
+    end)
+    
+    -- // ========== RETURN OBJECTS ==========
+    return {
+        ScreenGui = ScreenGui,
+        ToggleBtn = ToggleBtn,
+        ToggleStroke = ToggleStroke,
+        MainMenu = MainMenu,
+        MenuStroke = MenuStroke,
+        StatusLabel = StatusLabel,
+        StatusIndicator = StatusIndicator,
+        StatusText = StatusText,
+        Toggle120Btn = Toggle120Btn,
+        FOVSlider = FOVSlider,
+        SliderFill = SliderFill,
+        SliderKnob = SliderKnob,
+        SliderLabel = SliderLabel,
+        UpdateStatusUI = UpdateStatusUI,
+        ShowMenu = ShowMenu,
+        HideMenu = HideMenu,
+        PresetButtons = presetButtons,
+        DynamicToggle = DynamicToggle,
+        DynamicKnob = DynamicKnob
+    }
+end
+
+-- // ==================== PC INPUT ====================
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    
+    -- F4 để toggle FOV
+    if input.KeyCode == Enum.KeyCode.F4 then
+        Toggle120FOV()
+        if MenuObjects then
+            MenuObjects.UpdateStatusUI()
+        end
+    end
+    
+    -- RightControl để toggle menu
+    if input.KeyCode == Enum.KeyCode.RightControl then
+        if MenuObjects then
+            if menuVisible then
+                MenuObjects.HideMenu()
+            else
+                MenuObjects.ShowMenu()
+            end
+        end
+    end
+end)
+
+-- // ==================== KHỞI TẠO MENU ====================
+local MenuObjects = CreateMainMenu()
+
+-- // ==================== MOBILE ADJUSTMENTS ====================
+if isMobile then
+    -- Tăng kích thước nút toggle
+    MenuObjects.ToggleBtn.Size = UDim2.new(0, 60, 0, 60)
+    MenuObjects.ToggleBtn.TextSize = 28
+    
+    -- Menu to hơn trên mobile
+    MenuObjects.MainMenu.Size = UDim2.new(0, 320, 0, 450)
+    MenuObjects.MainMenu.Position = UDim2.new(0.5, -160, 0.5, -225)
+    
+    -- Tăng kích thước slider knob
+    MenuObjects.SliderKnob.Size = UDim2.new(0, 24, 0, 24)
+    
+    -- Tăng kích thước các nút preset
+    for _, btn in pairs(MenuObjects.PresetButtons) do
+        btn.Size = UDim2.new(0, 52, 0, 36)
+    end
+end
+
+-- // ==================== GLOW PULSE EFFECT ====================
+spawn(function()
+    while task.wait(0.05) do
+        if FOV_ACTIVE and MenuObjects.MenuStroke then
+            local pulse = 1 + math.sin(tick() * 3) * 0.3
+            MenuObjects.MenuStroke.Transparency = 0.5 - (pulse - 1) * 2
+            MenuObjects.ToggleStroke.Thickness = 2 + math.sin(tick() * 3) * 1
+        end
+    end
+end)
+
+-- // ==================== THÔNG BÁO ====================
+print("╔════════════════════════════════════╗")
+print("║  📱🖥️ 120 FOV + MENU LOADED!   ║")
+print("║  Platform: " .. (isMobile and "MOBILE 📱" or "PC 🖥️") .. "       ║")
+print("║  F4: Toggle FOV                  ║")
+print("║  RightCtrl: Toggle Menu          ║")
+print("║  🖱️ Click ⚙️ to open menu      ║")
+print("╚════════════════════════════════════╝")
+
+-- // ==================== TRẢ VỀ FUNCTIONS ====================
+return {
+    ToggleFOV = Toggle120FOV,
+    SetFOV = SetFOV,
+    GetFOV = function() return Camera.FieldOfView end,
+    IsActive = function() return FOV_ACTIVE end,
+    ToggleMenu = function()
+        if menuVisible then
+            MenuObjects.HideMenu()
+        else
+            MenuObjects.ShowMenu()
+        end
+    end,
+    MenuObjects = MenuObjects
+}
