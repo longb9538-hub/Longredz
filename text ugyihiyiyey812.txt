@@ -1,0 +1,416 @@
+-- ==========================================================
+-- SCRIPT FPV FTAP - TÍCH HỢP GIAO DIỆN OSD & NHIỄU SỐNG FPV
+-- (Gồm: La Bàn, Pin, Tọa Độ, Nhiễu Sóng Scanline & RSSI)
+-- ==========================================================
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
+local CoreGui = game:GetService("CoreGui")
+local UserInputService = game:GetService("UserInputService")
+
+local LocalPlayer = Players.LocalPlayer
+
+local targetPart = nil
+local isSteering = false
+local flySpeed = 140
+local sensitivity = 0.25
+
+local renderConn = nil
+local touchConn = nil
+local inputConn = nil
+local hiddenParts = {}
+
+local cameraYaw = 0
+local cameraPitch = 0
+
+-- THÔNG SỐ PIN & SÓNG FPV
+local batteryPercent = 100
+local batteryVoltage = 16.8
+local currentDraw = 12.5
+
+-- 1. TẠO SCREEN GUI
+if CoreGui:FindFirstChild("FTAP_FPV_OSD_System") then
+    CoreGui.FTAP_FPV_OSD_System:Destroy()
+end
+
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "FTAP_FPV_OSD_System"
+ScreenGui.Parent = gethui and gethui() or CoreGui
+
+-- ==================== MAIN CONTROL MENU ====================
+local Main = Instance.new("Frame", ScreenGui)
+Main.Size = UDim2.new(0, 190, 0, 145)
+Main.Position = UDim2.new(0.02, 0, 0.3, 0)
+Main.BackgroundColor3 = Color3.fromRGB(20, 20, 30)
+Main.Active = true
+Main.Draggable = true
+Instance.new("UICorner", Main).CornerRadius = UDim.new(0, 8)
+
+local Title = Instance.new("TextLabel", Main)
+Title.Size = UDim2.new(1, 0, 0, 28)
+Title.Text = "🚁 FTAP FPV CONTROLLER"
+Title.TextColor3 = Color3.fromRGB(255, 255, 255)
+Title.BackgroundColor3 = Color3.fromRGB(35, 35, 55)
+Title.Font = Enum.Font.SourceSansBold
+Title.TextSize = 11
+Instance.new("UICorner", Title).CornerRadius = UDim.new(0, 8)
+
+local LockBtn = Instance.new("TextButton", Main)
+LockBtn.Size = UDim2.new(0.9, 0, 0, 30)
+LockBtn.Position = UDim2.new(0.05, 0, 0.24, 0)
+LockBtn.Text = "1. CHỌN ĐỒ TRƯỚC MẶT"
+LockBtn.BackgroundColor3 = Color3.fromRGB(52, 152, 219)
+LockBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+LockBtn.Font = Enum.Font.SourceSansBold
+LockBtn.TextSize = 11
+Instance.new("UICorner", LockBtn).CornerRadius = UDim.new(0, 6)
+
+local DriveBtn = Instance.new("TextButton", Main)
+DriveBtn.Size = UDim2.new(0.9, 0, 0, 30)
+DriveBtn.Position = UDim2.new(0.05, 0, 0.48, 0)
+DriveBtn.Text = "2. LÁI BẰNG CHUỘT: TẮT"
+DriveBtn.BackgroundColor3 = Color3.fromRGB(231, 76, 60)
+DriveBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+DriveBtn.Font = Enum.Font.SourceSansBold
+DriveBtn.TextSize = 11
+Instance.new("UICorner", DriveBtn).CornerRadius = UDim.new(0, 6)
+
+local EmergencyBtn = Instance.new("TextButton", Main)
+EmergencyBtn.Size = UDim2.new(0.9, 0, 0, 30)
+EmergencyBtn.Position = UDim2.new(0.05, 0, 0.72, 0)
+EmergencyBtn.Text = "🚨 CỨU HỘ CAMERA"
+EmergencyBtn.BackgroundColor3 = Color3.fromRGB(230, 126, 34)
+EmergencyBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+EmergencyBtn.Font = Enum.Font.SourceSansBold
+EmergencyBtn.TextSize = 11
+Instance.new("UICorner", EmergencyBtn).CornerRadius = UDim.new(0, 6)
+
+-- ==================== HUD OSD DỰA TRÊN MÀN HÌNH LÁI ====================
+local HUD = Instance.new("Frame", ScreenGui)
+HUD.Name = "HUD_Overlay"
+HUD.Size = UDim2.new(1, 0, 1, 0)
+HUD.BackgroundTransparency = 1
+HUD.Visible = false
+
+-- LỚP LỚP NHIỄU SỐNG FPV (STATIC NOISE LAYER)
+local NoiseOverlay = Instance.new("Frame", HUD)
+NoiseOverlay.Size = UDim2.new(1, 0, 1, 0)
+NoiseOverlay.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+NoiseOverlay.BackgroundTransparency = 0.96
+
+local ScanLine1 = Instance.new("Frame", HUD)
+ScanLine1.Size = UDim2.new(1, 0, 0, 3)
+ScanLine1.BackgroundColor3 = Color3.fromRGB(200, 200, 200)
+ScanLine1.BackgroundTransparency = 0.8
+ScanLine1.BorderSizePixel = 0
+
+local ScanLine2 = Instance.new("Frame", HUD)
+ScanLine2.Size = UDim2.new(1, 0, 0, 6)
+ScanLine2.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+ScanLine2.BackgroundTransparency = 0.85
+ScanLine2.BorderSizePixel = 0
+
+-- 1. Dãy la bàn trên cùng (Top Center)
+local CompassLabel = Instance.new("TextLabel", HUD)
+CompassLabel.Size = UDim2.new(0, 260, 0, 30)
+CompassLabel.Position = UDim2.new(0.5, -130, 0, 15)
+CompassLabel.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+CompassLabel.BackgroundTransparency = 0.5
+CompassLabel.TextColor3 = Color3.fromRGB(0, 255, 127)
+CompassLabel.Font = Enum.Font.Code
+CompassLabel.TextSize = 16
+CompassLabel.Text = "Compass: 000° N"
+Instance.new("UICorner", CompassLabel).CornerRadius = UDim.new(0, 6)
+
+-- 2. Tín hiệu Sóng FPV (Top Right)
+local SignalLabel = Instance.new("TextLabel", HUD)
+SignalLabel.Size = UDim2.new(0, 200, 0, 30)
+SignalLabel.Position = UDim2.new(1, -220, 0, 15)
+SignalLabel.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+SignalLabel.BackgroundTransparency = 0.5
+SignalLabel.TextColor3 = Color3.fromRGB(0, 255, 127)
+SignalLabel.Font = Enum.Font.Code
+SignalLabel.TextSize = 13
+SignalLabel.Text = "📡 RSSI: -42 dBm | LQ: 99%"
+Instance.new("UICorner", SignalLabel).CornerRadius = UDim.new(0, 6)
+
+-- 3. Thông số Pin góc dưới bên trái (Bottom Left)
+local BatteryFrame = Instance.new("Frame", HUD)
+BatteryFrame.Size = UDim2.new(0, 180, 0, 65)
+BatteryFrame.Position = UDim2.new(0, 20, 1, -85)
+BatteryFrame.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+BatteryFrame.BackgroundTransparency = 0.5
+Instance.new("UICorner", BatteryFrame).CornerRadius = UDim.new(0, 6)
+
+local BatteryLabel = Instance.new("TextLabel", BatteryFrame)
+BatteryLabel.Size = UDim2.new(1, -10, 1, 0)
+BatteryLabel.Position = UDim2.new(0, 8, 0, 0)
+BatteryLabel.BackgroundTransparency = 1
+BatteryLabel.TextColor3 = Color3.fromRGB(0, 255, 127)
+BatteryLabel.Font = Enum.Font.Code
+BatteryLabel.TextSize = 13
+BatteryLabel.TextXAlignment = Enum.TextXAlignment.Left
+BatteryLabel.Text = "🔋 BAT: 100%\n⚡ VOLT: 16.8V\n💥 PWR: 12.5A / 210W"
+
+-- 4. Tọa độ & Góc nghiêng ở chính giữa dưới cùng (Bottom Center)
+local TelemetryLabel = Instance.new("TextLabel", HUD)
+TelemetryLabel.Size = UDim2.new(0, 380, 0, 32)
+TelemetryLabel.Position = UDim2.new(0.5, -190, 1, -45)
+TelemetryLabel.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+TelemetryLabel.BackgroundTransparency = 0.5
+TelemetryLabel.TextColor3 = Color3.fromRGB(0, 255, 127)
+TelemetryLabel.Font = Enum.Font.Code
+TelemetryLabel.TextSize = 13
+TelemetryLabel.Text = "POS: X:0 Y:0 Z:0 | TILT: 0°"
+Instance.new("UICorner", TelemetryLabel).CornerRadius = UDim.new(0, 6)
+
+-- Tâm ngắm FPV
+local Crosshair = Instance.new("TextLabel", HUD)
+Crosshair.Size = UDim2.new(0, 20, 0, 20)
+Crosshair.Position = UDim2.new(0.5, -10, 0.5, -10)
+Crosshair.BackgroundTransparency = 1
+Crosshair.Text = "+"
+Crosshair.TextColor3 = Color3.fromRGB(0, 255, 127)
+Crosshair.TextSize = 22
+Crosshair.Font = Enum.Font.Code
+
+-- HÀM TÍNH HƯỚNG LA BÀN
+local function getCompassDirection(deg)
+    local dirs = {"N (Bắc)", "NE (Đông Bắc)", "E (Đông)", "SE (Đông Nam)", "S (Nam)", "SW (Tây Nam)", "W (Tây)", "NW (Tây Bắc)"}
+    local index = math.floor((deg + 22.5) / 45) % 8 + 1
+    return dirs[index]
+end
+
+-- HOÀN TÁC HIỂN THỊ MÔ HÌNH
+local function restoreVisibility()
+    for _, part in ipairs(hiddenParts) do
+        if part and part.Parent then
+            part.LocalTransparencyModifier = 0
+        end
+    end
+    hiddenParts = {}
+end
+
+-- RESET CAMERA
+local function hardResetCamera()
+    isSteering = false
+    HUD.Visible = false
+    
+    pcall(function() UserInputService.MouseBehavior = Enum.MouseBehavior.Default end)
+
+    if renderConn then renderConn:Disconnect() renderConn = nil end
+    if touchConn then touchConn:Disconnect() touchConn = nil end
+    if inputConn then inputConn:Disconnect() inputConn = nil end
+
+    restoreVisibility()
+
+    local cam = Workspace.CurrentCamera
+    local char = LocalPlayer.Character
+    
+    if cam and char then
+        cam.CameraType = Enum.CameraType.Custom
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        local hrp = char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Head")
+        
+        if hum then cam.CameraSubject = hum end
+        if hrp then
+            cam.CFrame = CFrame.new(hrp.Position - (hrp.CFrame.LookVector * 12) + Vector3.new(0, 3, 0), hrp.Position)
+        end
+    end
+
+    LocalPlayer.MinCameraZoomDistance = 0.5
+    LocalPlayer.MaxCameraZoomDistance = 128
+
+    targetPart = nil
+    LockBtn.Text = "1. CHỌN ĐỒ TRƯỚC MẶT"
+    LockBtn.BackgroundColor3 = Color3.fromRGB(52, 152, 219)
+    DriveBtn.Text = "2. LÁI BẰNG CHUỘT: TẮT"
+    DriveBtn.BackgroundColor3 = Color3.fromRGB(231, 76, 60)
+end
+
+-- CHỌN MỤC TIÊU
+local function getObjectInCrosshair()
+    local cam = Workspace.CurrentCamera
+    if not cam then return nil end
+    
+    local ray = cam:ViewportPointToRay(cam.ViewportSize.X / 2, cam.ViewportSize.Y / 2)
+    local params = RaycastParams.new()
+    params.FilterType = Enum.RaycastFilterType.Exclude
+    if LocalPlayer.Character then
+        params.FilterDescendantsInstances = {LocalPlayer.Character}
+    end
+    
+    local result = Workspace:Raycast(ray.Origin, ray.Direction * 500, params)
+    if result and result.Instance then
+        local hit = result.Instance
+        if hit.Parent and hit.Parent:FindFirstChildOfClass("Humanoid") then
+            return hit.Parent:FindFirstChild("HumanoidRootPart") or hit
+        elseif not hit.Anchored then
+            return hit
+        end
+    end
+    return nil
+end
+
+-- BẮT ĐẦU LÁI FPV MỚI
+local function startSteering()
+    if not targetPart or not targetPart.Parent then 
+        hardResetCamera()
+        return 
+    end
+    
+    isSteering = true
+    HUD.Visible = true
+    DriveBtn.Text = "2. LÁI BẰNG CHUỘT: BẬT"
+    DriveBtn.BackgroundColor3 = Color3.fromRGB(46, 204, 113)
+
+    batteryPercent = 100
+    batteryVoltage = 16.8
+
+    local cam = Workspace.CurrentCamera
+    local currentLook = cam.CFrame.LookVector
+    cameraYaw = math.deg(math.atan2(-currentLook.X, -currentLook.Z))
+    cameraPitch = math.deg(math.asin(currentLook.Y))
+
+    cam.CameraType = Enum.CameraType.Scriptable
+    
+    restoreVisibility()
+    local rootModel = targetPart:FindFirstAncestorOfClass("Model") or targetPart.Parent
+    if rootModel then
+        for _, descendant in ipairs(rootModel:GetDescendants()) do
+            if descendant:IsA("BasePart") then table.insert(hiddenParts, descendant) end
+        end
+    elseif targetPart:IsA("BasePart") then
+        table.insert(hiddenParts, targetPart)
+    end
+
+    local size = targetPart.Size
+    local frontOffset = (size.Z / 2) + 1.2
+    local topOffset = (size.Y / 2) + 0.8
+
+    if inputConn then inputConn:Disconnect() end
+    inputConn = UserInputService.InputChanged:Connect(function(input)
+        if isSteering and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+            local delta = input.Delta
+            cameraYaw = cameraYaw - (delta.X * sensitivity)
+            cameraPitch = math.clamp(cameraPitch - (delta.Y * sensitivity), -80, 80)
+        end
+    end)
+
+    if renderConn then renderConn:Disconnect() end
+    renderConn = RunService.RenderStepped:Connect(function(dt)
+        if not isSteering or not targetPart or not targetPart.Parent or not targetPart:IsDescendantOf(Workspace) then
+            hardResetCamera()
+            return
+        end
+
+        UserInputService.MouseBehavior = Enum.MouseBehavior.LockCenter
+        
+        local rotCFrame = CFrame.Angles(0, math.rad(cameraYaw), 0) * CFrame.Angles(math.rad(cameraPitch), 0, 0)
+        
+        targetPart.Anchored = false
+        targetPart.CFrame = CFrame.new(targetPart.Position) * rotCFrame
+        targetPart.AssemblyLinearVelocity = rotCFrame.LookVector * flySpeed
+        
+        cam.CFrame = targetPart.CFrame * CFrame.new(0, topOffset, -frontOffset)
+        
+        for _, part in ipairs(hiddenParts) do
+            if part and part.Parent then part.LocalTransparencyModifier = 1 end
+        end
+
+        -- ================= CẬP NHẬT HIỆU ỨNG NHIỄU SỐNG & HUD Realtime =================
+        local pos = targetPart.Position
+        local myChar = LocalPlayer.Character
+        local charPos = myChar and myChar:FindFirstChild("HumanoidRootPart") and myChar.HumanoidRootPart.Position or pos
+        local dist = (pos - charPos).Magnitude
+
+        -- 1. Giả lập Nhiễu Sóng Analog (Scanlines & Noise)
+        if math.random(1, 2) == 1 then
+            ScanLine1.Position = UDim2.new(0, 0, math.random(), 0)
+            ScanLine1.Size = UDim2.new(1, 0, 0, math.random(2, 6))
+            ScanLine1.BackgroundTransparency = math.random(65, 90) / 100
+
+            ScanLine2.Position = UDim2.new(0, 0, math.random(), 0)
+            ScanLine2.Size = UDim2.new(1, 0, 0, math.random(1, 4))
+            ScanLine2.BackgroundTransparency = math.random(70, 95) / 100
+        end
+
+        -- Nhiễu mờ màn hình nhấp nháy ngẫu nhiên
+        NoiseOverlay.BackgroundTransparency = math.random(93, 98) / 100
+
+        -- Tính Cường Độ Sóng RSSI (Khoảng cách càng xa sóng càng yếu & nhiễu mạnh)
+        local rssi = math.clamp(math.floor(-35 - (dist * 0.08) + math.random(-3, 3)), -98, -30)
+        local lq = math.clamp(math.floor(100 - (dist * 0.1) + math.random(-4, 4)), 15, 100)
+        SignalLabel.Text = string.format("📡 RSSI: %d dBm | LQ: %d%%", rssi, lq)
+
+        -- 2. La Bàn
+        local heading = math.floor((360 - cameraYaw) % 360)
+        CompassLabel.Text = string.format("🧭 %03d° %s", heading, getCompassDirection(heading))
+
+        -- 3. Pin
+        batteryPercent = math.max(0, batteryPercent - (dt * 0.4))
+        batteryVoltage = 13.5 + (3.3 * (batteryPercent / 100))
+        currentDraw = 12.0 + math.random(-5, 8) / 10 + (flySpeed / 20)
+        local watts = math.floor(batteryVoltage * currentDraw)
+        BatteryLabel.Text = string.format("🔋 BAT: %d%%\n⚡ VOLT: %.1fV\n💥 PWR: %.1fA / %dW", math.floor(batteryPercent), batteryVoltage, currentDraw, watts)
+
+        -- 4. Tọa độ & Góc nghiêng
+        TelemetryLabel.Text = string.format("📍 X: %d | Y: %d | Z: %d  |  📐 GÓC NGHIÊNG: %d°", math.floor(pos.X), math.floor(pos.Y), math.floor(pos.Z), math.floor(cameraPitch))
+    end)
+
+    -- VA CHẠM AN TOÀN (KHÔNG NỔ, KHÔNG XÉ NHÂN VẬT)
+    if touchConn then touchConn:Disconnect() end
+    touchConn = targetPart.Touched:Connect(function(hit)
+        if not isSteering or not targetPart then return end
+        if hit:IsDescendantOf(LocalPlayer.Character) or hit == targetPart then return end
+        
+        if touchConn then touchConn:Disconnect() touchConn = nil end
+
+        pcall(function()
+            targetPart.AssemblyLinearVelocity = Vector3.zero
+        end)
+
+        task.defer(function()
+            hardResetCamera()
+        end)
+    end)
+end
+
+-- BUTTON EVENTS
+LockBtn.MouseButton1Click:Connect(function()
+    local obj = getObjectInCrosshair()
+    if obj then
+        targetPart = obj
+        LockBtn.Text = "ĐÃ KHÓA: " .. string.sub(obj.Name, 1, 10)
+        LockBtn.BackgroundColor3 = Color3.fromRGB(155, 89, 182)
+    else
+        LockBtn.Text = "KHÔNG TÌM THẤY!"
+        task.wait(1)
+        LockBtn.Text = "1. CHỌN ĐỒ TRƯỚC MẶT"
+        LockBtn.BackgroundColor3 = Color3.fromRGB(52, 152, 219)
+    end
+end)
+
+DriveBtn.MouseButton1Click:Connect(function()
+    if isSteering then
+        hardResetCamera()
+    else
+        if not targetPart or not targetPart.Parent then
+            targetPart = getObjectInCrosshair()
+        end
+        
+        if targetPart then
+            startSteering()
+        else
+            DriveBtn.Text = "CHƯA CHỌN MỤC TIÊU!"
+            task.wait(1)
+            DriveBtn.Text = "2. LÁI BẰNG CHUỘT: TẮT"
+            DriveBtn.BackgroundColor3 = Color3.fromRGB(231, 76, 60)
+        end
+    end
+end)
+
+EmergencyBtn.MouseButton1Click:Connect(function()
+    hardResetCamera()
+end)
