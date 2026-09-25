@@ -1,0 +1,957 @@
+--[[
+    ╔══════════════════════════════════════════╗
+    ║   🥚 STEAL AN EGG - ULTIMATE MENU 🥚     ║
+    ║        Delta Executor Compatible         ║
+    ║      ESP + Auto + Rare Hunter + UI       ║
+    ╚══════════════════════════════════════════╝
+--]]
+
+local Players = game:GetService("Players")
+local Workspace = game:GetService("Workspace")
+local RunService = game:GetService("RunService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+local LocalPlayer = Players.LocalPlayer
+
+-- ==================================================
+-- CẤU HÌNH
+-- ==================================================
+local Config = {
+    AutoSteal = false,
+    AutoRare = false,
+    ESP = false,
+    AutoSell = false,
+    SpeedHack = false,
+    WalkSpeed = 100,
+    JumpPower = 120,
+    MinRarity = "Secret",
+    TeleportDelay = 0.4,
+}
+
+local RarityPriority = {
+    ["Divine"] = 10, ["Eternal"] = 9, ["Secret"] = 8,
+    ["Cosmic"] = 7, ["Mythic"] = 6, ["Legendary"] = 5,
+    ["Epic"] = 4, ["Rare"] = 3, ["Common"] = 1,
+}
+
+local EggPetDatabase = {
+    ["Forest Egg"] = {Pet = "Chicken/Dog/Owl/Fox/Bear", Income = "$1 - $1.8K/s"},
+    ["Lake Egg"] = {Pet = "Frog/Duckling/Turtle/Axolotl/Leviathan", Income = "$3 - $220K/s"},
+    ["Desert Egg"] = {Pet = "Jerboa/Fennec/Camel/Scorpion/Royal Sphinx", Income = "$6 - $280K/s"},
+    ["Jungle Egg"] = {Pet = "Toucan/Gorilla/Tiger/King Snake", Income = "$90 - $3.5M/s"},
+    ["Snow Egg"] = {Pet = "Penguin/Polar Bear/Mammoth/Yeti/Ice Dragon", Income = "$500 - $65M/s"},
+    ["Volcano Egg"] = {Pet = "Lava Gecko/Cerberus/Phoenix/Lava Dragon", Income = "$2K - $100M/s"},
+    ["Ocean Egg"] = {Pet = "Shark/Orca/Kraken/El Maja", Income = "$220 - $130M/s"},
+    ["Abyss Egg"] = {Pet = "Shark/Orca/Kraken/El Maja", Income = "$220 - $130M/s"},
+    ["Prehistoric Egg"] = {Pet = "Dodo/T-Rex/Mosasaurus", Income = "$500K - $180M/s"},
+    ["Cosmic Egg"] = {Pet = "Cosmic Gecko/Cosmic Dragon/Unicorn", Income = "$1.5K - $1B/s"},
+    ["Cherry Blossom Egg"] = {Pet = "Koi/Oni Tiger/Kitsune", Income = "$4K - $1.8B/s"},
+    ["Titan Egg"] = {Pet = "Spideron/Mantaris/Gorilla King/Nightflame", Income = "$95K - $3B/s"},
+    ["Angel Egg"] = {Pet = "Light Dove/Pegasus/ArchAngel", Income = "$225K - $5B/s"},
+    ["Demon Egg"] = {Pet = "Imp/Demon Hound/World Burner", Income = "$50K - $5B/s"},
+    ["Void Egg"] = {Pet = "Rift Eye/Void Serpent/World Eater", Income = "$11K - $3.5B/s"},
+}
+
+-- ==================================================
+-- HÀM HỖ TRỢ
+-- ==================================================
+local function getEggInfo(eggName)
+    if EggPetDatabase[eggName] then return EggPetDatabase[eggName] end
+    for key, data in pairs(EggPetDatabase) do
+        if eggName:lower():find(key:lower()) or key:lower():find(eggName:lower()) then
+            return data
+        end
+    end
+    return {Pet = "???", Income = "???"}
+end
+
+local function getRarity(name)
+    local l = name:lower()
+    if l:find("divine") or l:find("nightflame") or l:find("kitsune") then return "Divine", 10 end
+    if l:find("eternal") or l:find("gorilla king") or l:find("ice dragon") or l:find("lava dragon") then return "Eternal", 9 end
+    if l:find("secret") or l:find("cerberus") or l:find("kraken") or l:find("king snake") then return "Secret", 8 end
+    if l:find("cosmic") or l:find("unicorn") or l:find("leviathan") or l:find("royal sphinx") then return "Cosmic", 7 end
+    if l:find("mythic") or l:find("spider") or l:find("mammoth") then return "Mythic", 6 end
+    return "Common", 1
+end
+
+local function getRoot()
+    local char = LocalPlayer.Character
+    return char and char:FindFirstChild("HumanoidRootPart")
+end
+
+local function getHumanoid()
+    local char = LocalPlayer.Character
+    return char and char:FindFirstChildOfClass("Humanoid")
+end
+
+-- ==================================================
+-- TẠO MENU UI SIÊU ĐẸP
+-- ==================================================
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "StealEggUltimateMenu"
+ScreenGui.ResetOnSpawn = false
+ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+
+-- === Nút mở menu (Floating Button) ===
+local OpenBtn = Instance.new("TextButton")
+OpenBtn.Size = UDim2.new(0, 60, 0, 60)
+OpenBtn.Position = UDim2.new(0, 20, 0.5, -30)
+OpenBtn.BackgroundColor3 = Color3.fromRGB(255, 100, 150)
+OpenBtn.Text = "🥚"
+OpenBtn.TextSize = 30
+OpenBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+OpenBtn.Font = Enum.Font.GothamBold
+OpenBtn.BorderSizePixel = 0
+OpenBtn.AutoButtonColor = false
+OpenBtn.Parent = ScreenGui
+
+local OpenCorner = Instance.new("UICorner")
+OpenCorner.CornerRadius = UDim.new(1, 0)
+OpenCorner.Parent = OpenBtn
+
+local OpenGradient = Instance.new("UIGradient")
+OpenGradient.Color = ColorSequence.new({
+    ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 100, 150)),
+    ColorSequenceKeypoint.new(1, Color3.fromRGB(150, 80, 255)),
+})
+OpenGradient.Rotation = 45
+OpenGradient.Parent = OpenBtn
+
+local OpenStroke = Instance.new("UIStroke")
+OpenStroke.Color = Color3.fromRGB(255, 255, 255)
+OpenStroke.Thickness = 2
+OpenStroke.Transparency = 0.3
+OpenStroke.Parent = OpenBtn
+
+-- Pulse animation cho nút mở
+task.spawn(function()
+    while OpenBtn.Parent do
+        TweenService:Create(OpenBtn, TweenInfo.new(1, Enum.EasingStyle.Sine), {
+            Size = UDim2.new(0, 68, 0, 68)
+        }):Play()
+        task.wait(1)
+        TweenService:Create(OpenBtn, TweenInfo.new(1, Enum.EasingStyle.Sine), {
+            Size = UDim2.new(0, 60, 0, 60)
+        }):Play()
+        task.wait(1)
+    end
+end)
+
+-- === Main Frame ===
+local MainFrame = Instance.new("Frame")
+MainFrame.Size = UDim2.new(0, 400, 0, 500)
+MainFrame.Position = UDim2.new(0.5, -200, 0.5, -250)
+MainFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 25)
+MainFrame.BorderSizePixel = 0
+MainFrame.Active = true
+MainFrame.Draggable = true
+MainFrame.Visible = false
+MainFrame.Parent = ScreenGui
+
+local MainCorner = Instance.new("UICorner")
+MainCorner.CornerRadius = UDim.new(0, 16)
+MainCorner.Parent = MainFrame
+
+local MainStroke = Instance.new("UIStroke")
+MainStroke.Color = Color3.fromRGB(255, 100, 150)
+MainStroke.Thickness = 2
+MainStroke.Transparency = 0.2
+MainStroke.Parent = MainFrame
+
+local MainGradient = Instance.new("UIGradient")
+MainGradient.Color = ColorSequence.new({
+    ColorSequenceKeypoint.new(0, Color3.fromRGB(25, 20, 40)),
+    ColorSequenceKeypoint.new(1, Color3.fromRGB(15, 15, 30)),
+})
+MainGradient.Rotation = 90
+MainGradient.Parent = MainFrame
+
+-- === Header ===
+local Header = Instance.new("Frame")
+Header.Size = UDim2.new(1, 0, 0, 60)
+Header.BackgroundColor3 = Color3.fromRGB(255, 100, 150)
+Header.BorderSizePixel = 0
+Header.Parent = MainFrame
+
+local HeaderCorner = Instance.new("UICorner")
+HeaderCorner.CornerRadius = UDim.new(0, 16)
+HeaderCorner.Parent = Header
+
+local HeaderGradient = Instance.new("UIGradient")
+HeaderGradient.Color = ColorSequence.new({
+    ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 100, 150)),
+    ColorSequenceKeypoint.new(0.5, Color3.fromRGB(200, 80, 200)),
+    ColorSequenceKeypoint.new(1, Color3.fromRGB(120, 80, 255)),
+})
+HeaderGradient.Rotation = 0
+HeaderGradient.Parent = Header
+
+-- Fix góc dưới header vuông
+local HeaderFix = Instance.new("Frame")
+HeaderFix.Size = UDim2.new(1, 0, 0, 16)
+HeaderFix.Position = UDim2.new(0, 0, 1, -16)
+HeaderFix.BackgroundColor3 = Color3.fromRGB(255, 100, 150)
+HeaderFix.BorderSizePixel = 0
+HeaderFix.ZIndex = 0
+HeaderFix.Parent = Header
+
+local HeaderFixGradient = Instance.new("UIGradient")
+HeaderFixGradient.Color = HeaderGradient.Color
+HeaderFixGradient.Rotation = HeaderGradient.Rotation
+HeaderFixGradient.Parent = HeaderFix
+
+local Title = Instance.new("TextLabel")
+Title.Size = UDim2.new(1, -60, 1, 0)
+Title.Position = UDim2.new(0, 20, 0, 0)
+Title.BackgroundTransparency = 1
+Title.Text = "🥚 STEAL AN EGG — ULTIMATE"
+Title.TextColor3 = Color3.fromRGB(255, 255, 255)
+Title.TextSize = 20
+Title.Font = Enum.Font.GothamBlack
+Title.TextXAlignment = Enum.TextXAlignment.Left
+Title.Parent = Header
+
+local Subtitle = Instance.new("TextLabel")
+Subtitle.Size = UDim2.new(1, -60, 0, 16)
+Subtitle.Position = UDim2.new(0, 22, 1, -22)
+Subtitle.BackgroundTransparency = 1
+Subtitle.Text = "Delta Executor  •  v1.0"
+Subtitle.TextColor3 = Color3.fromRGB(255, 255, 255)
+Subtitle.TextTransparency = 0.3
+Subtitle.TextSize = 11
+Subtitle.Font = Enum.Font.Gotham
+Subtitle.TextXAlignment = Enum.TextXAlignment.Left
+Subtitle.Parent = Header
+
+-- Nút đóng
+local CloseBtn = Instance.new("TextButton")
+CloseBtn.Size = UDim2.new(0, 32, 0, 32)
+CloseBtn.Position = UDim2.new(1, -42, 0, 14)
+CloseBtn.BackgroundColor3 = Color3.fromRGB(255, 70, 70)
+CloseBtn.Text = "✕"
+CloseBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+CloseBtn.Font = Enum.Font.GothamBold
+CloseBtn.TextSize = 16
+CloseBtn.BorderSizePixel = 0
+CloseBtn.Parent = Header
+
+local CloseCorner = Instance.new("UICorner")
+CloseCorner.CornerRadius = UDim.new(1, 0)
+CloseCorner.Parent = CloseBtn
+
+CloseBtn.MouseButton1Click:Connect(function()
+    TweenService:Create(MainFrame, TweenInfo.new(0.3, Enum.EasingStyle.Back), {
+        Size = UDim2.new(0, 0, 0, 0),
+        Position = UDim2.new(0.5, 0, 0.5, 0),
+    }):Play()
+    task.wait(0.3)
+    MainFrame.Visible = false
+    MainFrame.Size = UDim2.new(0, 400, 0, 500)
+    MainFrame.Position = UDim2.new(0.5, -200, 0.5, -250)
+end)
+
+OpenBtn.MouseButton1Click:Connect(function()
+    MainFrame.Visible = true
+    MainFrame.Size = UDim2.new(0, 0, 0, 0)
+    MainFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
+    TweenService:Create(MainFrame, TweenInfo.new(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+        Size = UDim2.new(0, 400, 0, 500),
+        Position = UDim2.new(0.5, -200, 0.5, -250),
+    }):Play()
+end)
+
+-- === Tab Container ===
+local TabBar = Instance.new("Frame")
+TabBar.Size = UDim2.new(1, -30, 0, 40)
+TabBar.Position = UDim2.new(0, 15, 0, 70)
+TabBar.BackgroundColor3 = Color3.fromRGB(25, 25, 40)
+TabBar.BorderSizePixel = 0
+TabBar.Parent = MainFrame
+
+local TabBarCorner = Instance.new("UICorner")
+TabBarCorner.CornerRadius = UDim.new(0, 10)
+TabBarCorner.Parent = TabBar
+
+local TabLayout = Instance.new("UIListLayout")
+TabLayout.FillDirection = Enum.FillDirection.Horizontal
+TabLayout.Padding = UDim.new(0, 5)
+TabLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+TabLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+TabLayout.Parent = TabBar
+
+-- === Content Container ===
+local ContentFrame = Instance.new("Frame")
+ContentFrame.Size = UDim2.new(1, -30, 1, -190)
+ContentFrame.Position = UDim2.new(0, 15, 0, 120)
+ContentFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 32)
+ContentFrame.BorderSizePixel = 0
+ContentFrame.Parent = MainFrame
+
+local ContentCorner = Instance.new("UICorner")
+ContentCorner.CornerRadius = UDim.new(0, 12)
+ContentCorner.Parent = ContentFrame
+
+-- Scroll
+local Scroll = Instance.new("ScrollingFrame")
+Scroll.Size = UDim2.new(1, -16, 1, -16)
+Scroll.Position = UDim2.new(0, 8, 0, 8)
+Scroll.BackgroundTransparency = 1
+Scroll.BorderSizePixel = 0
+Scroll.ScrollBarThickness = 4
+Scroll.ScrollBarImageColor3 = Color3.fromRGB(255, 100, 150)
+Scroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+Scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+Scroll.Parent = ContentFrame
+
+local ScrollLayout = Instance.new("UIListLayout")
+ScrollLayout.Padding = UDim.new(0, 8)
+ScrollLayout.SortOrder = Enum.SortOrder.LayoutOrder
+ScrollLayout.Parent = Scroll
+
+local ScrollPadding = Instance.new("UIPadding")
+ScrollPadding.PaddingTop = UDim.new(0, 5)
+ScrollPadding.PaddingLeft = UDim.new(0, 5)
+ScrollPadding.PaddingRight = UDim.new(0, 5)
+ScrollPadding.Parent = Scroll
+
+-- === Hàm tạo Toggle Button đẹp ===
+local function createToggle(text, emoji, color, callback)
+    local Btn = Instance.new("TextButton")
+    Btn.Size = UDim2.new(1, 0, 0, 45)
+    Btn.BackgroundColor3 = Color3.fromRGB(30, 30, 48)
+    Btn.Text = ""
+    Btn.AutoButtonColor = false
+    Btn.BorderSizePixel = 0
+    Btn.Parent = Scroll
+
+    local BtnCorner = Instance.new("UICorner")
+    BtnCorner.CornerRadius = UDim.new(0, 10)
+    BtnCorner.Parent = Btn
+
+    local BtnStroke = Instance.new("UIStroke")
+    BtnStroke.Color = Color3.fromRGB(60, 60, 90)
+    BtnStroke.Thickness = 1
+    BtnStroke.Parent = Btn
+
+    -- Emoji icon bên trái
+    local Icon = Instance.new("TextLabel")
+    Icon.Size = UDim2.new(0, 45, 1, 0)
+    Icon.Position = UDim2.new(0, 0, 0, 0)
+    Icon.BackgroundTransparency = 1
+    Icon.Text = emoji
+    Icon.TextSize = 22
+    Icon.Font = Enum.Font.GothamBold
+    Icon.Parent = Btn
+
+    -- Text
+    local Label = Instance.new("TextLabel")
+    Label.Size = UDim2.new(1, -140, 1, 0)
+    Label.Position = UDim2.new(0, 50, 0, 0)
+    Label.BackgroundTransparency = 1
+    Label.Text = text
+    Label.TextColor3 = Color3.fromRGB(230, 230, 240)
+    Label.TextSize = 15
+    Label.Font = Enum.Font.GothamBold
+    Label.TextXAlignment = Enum.TextXAlignment.Left
+    Label.Parent = Btn
+
+    -- Indicator (ON/OFF)
+    local Indicator = Instance.new("Frame")
+    Indicator.Size = UDim2.new(0, 50, 0, 24)
+    Indicator.Position = UDim2.new(1, -60, 0.5, -12)
+    Indicator.BackgroundColor3 = Color3.fromRGB(50, 50, 70)
+    Indicator.BorderSizePixel = 0
+    Indicator.Parent = Btn
+
+    local IndCorner = Instance.new("UICorner")
+    IndCorner.CornerRadius = UDim.new(1, 0)
+    IndCorner.Parent = Indicator
+
+    local Dot = Instance.new("Frame")
+    Dot.Size = UDim2.new(0, 18, 0, 18)
+    Dot.Position = UDim2.new(0, 3, 0.5, -9)
+    Dot.BackgroundColor3 = Color3.fromRGB(150, 150, 170)
+    Dot.BorderSizePixel = 0
+    Dot.Parent = Indicator
+
+    local DotCorner = Instance.new("UICorner")
+    DotCorner.CornerRadius = UDim.new(1, 0)
+    DotCorner.Parent = Dot
+
+    local state = false
+
+    Btn.MouseButton1Click:Connect(function()
+        state = not state
+        callback(state)
+        
+        if state then
+            TweenService:Create(Indicator, TweenInfo.new(0.25), {
+                BackgroundColor3 = color
+            }):Play()
+            TweenService:Create(Dot, TweenInfo.new(0.25, Enum.EasingStyle.Back), {
+                Position = UDim2.new(1, -21, 0.5, -9),
+                BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+            }):Play()
+            TweenService:Create(BtnStroke, TweenInfo.new(0.25), {
+                Color = color
+            }):Play()
+            TweenService:Create(Btn, TweenInfo.new(0.25), {
+                BackgroundColor3 = Color3.fromRGB(35, 35, 55)
+            }):Play()
+        else
+            TweenService:Create(Indicator, TweenInfo.new(0.25), {
+                BackgroundColor3 = Color3.fromRGB(50, 50, 70)
+            }):Play()
+            TweenService:Create(Dot, TweenInfo.new(0.25, Enum.EasingStyle.Back), {
+                Position = UDim2.new(0, 3, 0.5, -9),
+                BackgroundColor3 = Color3.fromRGB(150, 150, 170)
+            }):Play()
+            TweenService:Create(BtnStroke, TweenInfo.new(0.25), {
+                Color = Color3.fromRGB(60, 60, 90)
+            }):Play()
+            TweenService:Create(Btn, TweenInfo.new(0.25), {
+                BackgroundColor3 = Color3.fromRGB(30, 30, 48)
+            }):Play()
+        end
+    end)
+
+    return Btn
+end
+
+-- === Hàm tạo Tab ===
+local Tabs = {}
+local CurrentTab = nil
+
+local function createTab(name, emoji)
+    local TabBtn = Instance.new("TextButton")
+    TabBtn.Size = UDim2.new(0, 90, 0, 30)
+    TabBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 60)
+    TabBtn.Text = emoji .. " " .. name
+    TabBtn.TextColor3 = Color3.fromRGB(180, 180, 200)
+    TabBtn.Font = Enum.Font.GothamBold
+    TabBtn.TextSize = 12
+    TabBtn.BorderSizePixel = 0
+    TabBtn.AutoButtonColor = false
+    TabBtn.Parent = TabBar
+
+    local TabCorner = Instance.new("UICorner")
+    TabCorner.CornerRadius = UDim.new(0, 8)
+    TabCorner.Parent = TabBtn
+
+    return TabBtn
+end
+
+-- ==================================================
+-- TAB 1: MAIN (Auto cơ bản)
+-- ==================================================
+local Tab1 = createTab("Main", "🎮")
+
+-- ==================================================
+-- TAB 2: HUNTER (Trứng xịn)
+-- ==================================================
+local Tab2 = createTab("Hunter", "🎯")
+
+-- ==================================================
+-- TAB 3: ESP
+-- ==================================================
+local Tab3 = createTab("ESP", "👁️")
+
+-- ==================================================
+-- TAB 4: INFO
+-- ==================================================
+local Tab4 = createTab("Info", "📊")
+
+-- === Container cho từng tab ===
+local TabContainers = {}
+
+local function createTabContainer(tabBtn)
+    local Container = Instance.new("Frame")
+    Container.Size = UDim2.new(1, 0, 1, 0)
+    Container.BackgroundTransparency = 1
+    Container.Visible = false
+    Container.Parent = Scroll
+
+    local Layout = Instance.new("UIListLayout")
+    Layout.Padding = UDim.new(0, 8)
+    Layout.SortOrder = Enum.SortOrder.LayoutOrder
+    Layout.Parent = Container
+
+    TabContainers[tabBtn] = Container
+    return Container
+end
+
+local Container1 = createTabContainer(Tab1)
+local Container2 = createTabContainer(Tab2)
+local Container3 = createTabContainer(Tab3)
+local Container4 = createTabContainer(Tab4)
+
+-- === Hàm chuyển tab ===
+local function switchTab(tabBtn)
+    for btn, container in pairs(TabContainers) do
+        container.Visible = false
+        TweenService:Create(btn, TweenInfo.new(0.2), {
+            BackgroundColor3 = Color3.fromRGB(40, 40, 60),
+            TextColor3 = Color3.fromRGB(180, 180, 200)
+        }):Play()
+    end
+    TabContainers[tabBtn].Visible = true
+    TweenService:Create(tabBtn, TweenInfo.new(0.2), {
+        BackgroundColor3 = Color3.fromRGB(255, 100, 150),
+        TextColor3 = Color3.fromRGB(255, 255, 255)
+    }):Play()
+    CurrentTab = tabBtn
+end
+
+Tab1.MouseButton1Click:Connect(function() switchTab(Tab1) end)
+Tab2.MouseButton1Click:Connect(function() switchTab(Tab2) end)
+Tab3.MouseButton1Click:Connect(function() switchTab(Tab3) end)
+Tab4.MouseButton1Click:Connect(function() switchTab(Tab4) end)
+
+-- ==================================================
+-- TAB 1 CONTENT - MAIN
+-- ==================================================
+local function createToggleIn(container, text, emoji, color, callback)
+    local Btn = Instance.new("TextButton")
+    Btn.Size = UDim2.new(1, -10, 0, 45)
+    Btn.BackgroundColor3 = Color3.fromRGB(30, 30, 48)
+    Btn.Text = ""
+    Btn.AutoButtonColor = false
+    Btn.BorderSizePixel = 0
+    Btn.Parent = container
+
+    local BtnCorner = Instance.new("UICorner")
+    BtnCorner.CornerRadius = UDim.new(0, 10)
+    BtnCorner.Parent = Btn
+
+    local BtnStroke = Instance.new("UIStroke")
+    BtnStroke.Color = Color3.fromRGB(60, 60, 90)
+    BtnStroke.Thickness = 1
+    BtnStroke.Parent = Btn
+
+    local Icon = Instance.new("TextLabel")
+    Icon.Size = UDim2.new(0, 45, 1, 0)
+    Icon.BackgroundTransparency = 1
+    Icon.Text = emoji
+    Icon.TextSize = 22
+    Icon.Font = Enum.Font.GothamBold
+    Icon.Parent = Btn
+
+    local Label = Instance.new("TextLabel")
+    Label.Size = UDim2.new(1, -140, 1, 0)
+    Label.Position = UDim2.new(0, 50, 0, 0)
+    Label.BackgroundTransparency = 1
+    Label.Text = text
+    Label.TextColor3 = Color3.fromRGB(230, 230, 240)
+    Label.TextSize = 15
+    Label.Font = Enum.Font.GothamBold
+    Label.TextXAlignment = Enum.TextXAlignment.Left
+    Label.Parent = Btn
+
+    local Indicator = Instance.new("Frame")
+    Indicator.Size = UDim2.new(0, 50, 0, 24)
+    Indicator.Position = UDim2.new(1, -60, 0.5, -12)
+    Indicator.BackgroundColor3 = Color3.fromRGB(50, 50, 70)
+    Indicator.BorderSizePixel = 0
+    Indicator.Parent = Btn
+
+    local IndCorner = Instance.new("UICorner")
+    IndCorner.CornerRadius = UDim.new(1, 0)
+    IndCorner.Parent = Indicator
+
+    local Dot = Instance.new("Frame")
+    Dot.Size = UDim2.new(0, 18, 0, 18)
+    Dot.Position = UDim2.new(0, 3, 0.5, -9)
+    Dot.BackgroundColor3 = Color3.fromRGB(150, 150, 170)
+    Dot.BorderSizePixel = 0
+    Dot.Parent = Indicator
+
+    local DotCorner = Instance.new("UICorner")
+    DotCorner.CornerRadius = UDim.new(1, 0)
+    DotCorner.Parent = Dot
+
+    local state = false
+
+    Btn.MouseButton1Click:Connect(function()
+        state = not state
+        callback(state)
+        if state then
+            TweenService:Create(Indicator, TweenInfo.new(0.25), {BackgroundColor3 = color}):Play()
+            TweenService:Create(Dot, TweenInfo.new(0.25, Enum.EasingStyle.Back), {
+                Position = UDim2.new(1, -21, 0.5, -9),
+                BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+            }):Play()
+            TweenService:Create(BtnStroke, TweenInfo.new(0.25), {Color = color}):Play()
+        else
+            TweenService:Create(Indicator, TweenInfo.new(0.25), {BackgroundColor3 = Color3.fromRGB(50, 50, 70)}):Play()
+            TweenService:Create(Dot, TweenInfo.new(0.25, Enum.EasingStyle.Back), {
+                Position = UDim2.new(0, 3, 0.5, -9),
+                BackgroundColor3 = Color3.fromRGB(150, 150, 170)
+            }):Play()
+            TweenService:Create(BtnStroke, TweenInfo.new(0.25), {Color = Color3.fromRGB(60, 60, 90)}):Play()
+        end
+    end)
+
+    return Btn
+end
+
+createToggleIn(Container1, "Auto Steal Egg", "🥚", Color3.fromRGB(255, 100, 150), function(s) Config.AutoSteal = s end)
+createToggleIn(Container1, "Auto Sell", "💰", Color3.fromRGB(100, 255, 150), function(s) Config.AutoSell = s end)
+createToggleIn(Container1, "Speed Hack", "⚡", Color3.fromRGB(255, 220, 80), function(s)
+    Config.SpeedHack = s
+    local hum = getHumanoid()
+    if hum then
+        hum.WalkSpeed = s and Config.WalkSpeed or 16
+        hum.JumpPower = s and Config.JumpPower or 50
+    end
+end)
+
+-- Nút Teleport Base
+local BaseBtn = Instance.new("TextButton")
+BaseBtn.Size = UDim2.new(1, -10, 0, 45)
+BaseBtn.BackgroundColor3 = Color3.fromRGB(80, 60, 180)
+BaseBtn.Text = "🏠  Teleport về Base"
+BaseBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+BaseBtn.Font = Enum.Font.GothamBold
+BaseBtn.TextSize = 15
+BaseBtn.BorderSizePixel = 0
+BaseBtn.AutoButtonColor = false
+BaseBtn.Parent = Container1
+
+local BaseCorner = Instance.new("UICorner")
+BaseCorner.CornerRadius = UDim.new(0, 10)
+BaseCorner.Parent = BaseBtn
+
+BaseBtn.MouseButton1Click:Connect(function()
+    local root = getRoot()
+    if not root then return end
+    for _, obj in pairs(Workspace:GetChildren()) do
+        if obj:IsA("Model") and obj.Name:lower():find(LocalPlayer.Name:lower()) then
+            local bp = obj:FindFirstChild("Base") or obj.PrimaryPart
+            if bp then root.CFrame = bp.CFrame + Vector3.new(0, 5, 0) return end
+        end
+    end
+    local sp = Workspace:FindFirstChildOfClass("SpawnLocation")
+    if sp then root.CFrame = sp.CFrame + Vector3.new(0, 5, 0) end
+end)
+
+-- ==================================================
+-- TAB 2 CONTENT - HUNTER
+-- ==================================================
+createToggleIn(Container2, "Auto Lấy Trứng Xịn", "🎯", Color3.fromRGB(255, 80, 80), function(s) Config.AutoRare = s end)
+
+-- Dropdown chọn rarity
+local RarityLabel = Instance.new("TextLabel")
+RarityLabel.Size = UDim2.new(1, -10, 0, 25)
+RarityLabel.BackgroundTransparency = 1
+RarityLabel.Text = "🎚️  Rarity tối thiểu:"
+RarityLabel.TextColor3 = Color3.fromRGB(200, 200, 220)
+RarityLabel.Font = Enum.Font.GothamBold
+RarityLabel.TextSize = 13
+RarityLabel.TextXAlignment = Enum.TextXAlignment.Left
+RarityLabel.Parent = Container2
+
+local RarityFrame = Instance.new("Frame")
+RarityFrame.Size = UDim2.new(1, -10, 0, 40)
+RarityFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 48)
+RarityFrame.BorderSizePixel = 0
+RarityFrame.Parent = Container2
+
+local RarityCorner = Instance.new("UICorner")
+RarityCorner.CornerRadius = UDim.new(0, 10)
+RarityCorner.Parent = RarityFrame
+
+local RarityBtn = Instance.new("TextButton")
+RarityBtn.Size = UDim2.new(1, 0, 1, 0)
+RarityBtn.BackgroundTransparency = 1
+RarityBtn.Text = "Secret  ▼"
+RarityBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+RarityBtn.Font = Enum.Font.GothamBold
+RarityBtn.TextSize = 14
+RarityBtn.Parent = RarityFrame
+
+local rarities = {"Cosmic", "Secret", "Eternal", "Divine"}
+local rIdx = 2
+
+RarityBtn.MouseButton1Click:Connect(function()
+    rIdx = rIdx + 1
+    if rIdx > #rarities then rIdx = 1 end
+    RarityBtn.Text = rarities[rIdx] .. "  ▼"
+    Config.MinRarity = rarities[rIdx]
+end)
+
+-- Thông tin trứng xịn
+local InfoBox = Instance.new("Frame")
+InfoBox.Size = UDim2.new(1, -10, 0, 120)
+InfoBox.BackgroundColor3 = Color3.fromRGB(35, 25, 50)
+InfoBox.BorderSizePixel = 0
+InfoBox.Parent = Container2
+
+local InfoCorner = Instance.new("UICorner")
+InfoCorner.CornerRadius = UDim.new(0, 10)
+InfoCorner.Parent = InfoBox
+
+local InfoStroke = Instance.new("UIStroke")
+InfoStroke.Color = Color3.fromRGB(180, 100, 255)
+InfoStroke.Thickness = 1
+InfoStroke.Transparency = 0.4
+InfoStroke.Parent = InfoBox
+
+local InfoTitle = Instance.new("TextLabel")
+InfoTitle.Size = UDim2.new(1, -20, 0, 25)
+InfoTitle.Position = UDim2.new(0, 10, 0, 8)
+InfoTitle.BackgroundTransparency = 1
+InfoTitle.Text = "💎 TOP TRỨNG XỊN NHẤT"
+InfoTitle.TextColor3 = Color3.fromRGB(200, 150, 255)
+InfoTitle.Font = Enum.Font.GothamBold
+InfoTitle.TextSize = 13
+InfoTitle.TextXAlignment = Enum.TextXAlignment.Left
+InfoTitle.Parent = InfoBox
+
+local InfoList = Instance.new("TextLabel")
+InfoList.Size = UDim2.new(1, -20, 0, 80)
+InfoList.Position = UDim2.new(0, 10, 0, 32)
+InfoList.BackgroundTransparency = 1
+InfoList.Text = "🌟 Nightflame — $3B/s\n🌟 Kitsune — $1.8B/s\n🌟 Unicorn — $1B/s\n🌟 Gorilla King — $880M/s"
+InfoList.TextColor3 = Color3.fromRGB(220, 220, 240)
+InfoList.Font = Enum.Font.Gotham
+InfoList.TextSize = 12
+InfoList.TextXAlignment = Enum.TextXAlignment.Left
+InfoList.TextYAlignment = Enum.TextYAlignment.Top
+InfoList.Parent = InfoBox
+
+-- ==================================================
+-- TAB 3 CONTENT - ESP
+-- ==================================================
+createToggleIn(Container3, "ESP Tên Pet & Tiền", "👁️", Color3.fromRGB(100, 200, 255), function(s)
+    Config.ESP = s
+    if s then
+        task.spawn(function()
+            while Config.ESP do
+                task.wait(2)
+                if not Config.ESP then break end
+                -- Quét và tạo ESP
+                for _, obj in pairs(Workspace:GetDescendants()) do
+                    if not Config.ESP then break end
+                    if (obj:IsA("BasePart") or obj:IsA("Model")) and obj.Name:lower():find("egg") and not obj.Name:lower():find("spawn") then
+                        local part = obj:IsA("BasePart") and obj or obj:FindFirstChildWhichIsA("BasePart")
+                        if part and not part:FindFirstChild("PetESP_Billboard") then
+                            local info = getEggInfo(obj.Name)
+                            local bg = Instance.new("BillboardGui")
+                            bg.Name = "PetESP_Billboard"
+                            bg.Size = UDim2.new(0, 220, 0, 55)
+                            bg.StudsOffset = Vector3.new(0, 3, 0)
+                            bg.AlwaysOnTop = true
+                            bg.Adornee = part
+                            bg.Parent = part
+
+                            local f = Instance.new("Frame")
+                            f.Size = UDim2.new(1, 0, 1, 0)
+                            f.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+                            f.BackgroundTransparency = 0.3
+                            f.BorderSizePixel = 0
+                            f.Parent = bg
+
+                            local fc = Instance.new("UICorner")
+                            fc.CornerRadius = UDim.new(0, 6)
+                            fc.Parent = f
+
+                            local pl = Instance.new("TextLabel")
+                            pl.Size = UDim2.new(1, -10, 0, 28)
+                            pl.Position = UDim2.new(0, 5, 0, 2)
+                            pl.BackgroundTransparency = 1
+                            pl.Text = "🐾 " .. info.Pet
+                            pl.TextColor3 = Color3.fromRGB(255, 255, 100)
+                            pl.TextScaled = true
+                            pl.Font = Enum.Font.GothamBold
+                            pl.TextXAlignment = Enum.TextXAlignment.Left
+                            pl.Parent = f
+
+                            local ml = Instance.new("TextLabel")
+                            ml.Size = UDim2.new(1, -10, 0, 20)
+                            ml.Position = UDim2.new(0, 5, 0, 30)
+                            ml.BackgroundTransparency = 1
+                            ml.Text = "💰 " .. info.Income
+                            ml.TextColor3 = Color3.fromRGB(100, 255, 100)
+                            ml.TextScaled = true
+                            ml.Font = Enum.Font.Gotham
+                            ml.TextXAlignment = Enum.TextXAlignment.Left
+                            ml.Parent = f
+                        end
+                    end
+                end
+            end
+            -- Xóa hết ESP khi tắt
+            for _, obj in pairs(Workspace:GetDescendants()) do
+                if obj.Name == "PetESP_Billboard" then obj:Destroy() end
+            end
+        end)
+    end
+end)
+
+-- ==================================================
+-- TAB 4 CONTENT - INFO
+-- ==================================================
+local CreditBox = Instance.new("Frame")
+CreditBox.Size = UDim2.new(1, -10, 0, 260)
+CreditBox.BackgroundColor3 = Color3.fromRGB(25, 20, 40)
+CreditBox.BorderSizePixel = 0
+CreditBox.Parent = Container4
+
+local CreditCorner = Instance.new("UICorner")
+CreditCorner.CornerRadius = UDim.new(0, 10)
+CreditCorner.Parent = CreditBox
+
+local CreditStroke = Instance.new("UIStroke")
+CreditStroke.Color = Color3.fromRGB(255, 100, 150)
+CreditStroke.Thickness = 1
+CreditStroke.Transparency = 0.5
+CreditStroke.Parent = CreditBox
+
+local CreditText = Instance.new("TextLabel")
+CreditText.Size = UDim2.new(1, -20, 1, -20)
+CreditText.Position = UDim2.new(0, 10, 0, 10)
+CreditText.BackgroundTransparency = 1
+CreditText.Text = "🥚 STEAL AN EGG ULTIMATE 🥚\n\n" ..
+    "📌 Version: 1.0\n" ..
+    "⚙️ Executor: Delta\n\n" ..
+    "✨ Tính năng:\n" ..
+    "• Auto Steal Egg\n" ..
+    "• Auto Lấy Trứng Xịn\n" ..
+    "• ESP Tên Pet & Tiền\n" ..
+    "• Auto Sell\n" ..
+    "• Speed Hack\n\n" ..
+    "💡 Tip: Bật ESP + Auto Rare\n" ..
+    "để farm trứng xịn hiệu quả nhất!\n\n" ..
+    "🎮 Chúc bạn chơi vui vẻ!"
+CreditText.TextColor3 = Color3.fromRGB(220, 220, 240)
+CreditText.Font = Enum.Font.Gotham
+CreditText.TextSize = 13
+CreditText.TextXAlignment = Enum.TextXAlignment.Left
+CreditText.TextYAlignment = Enum.TextYAlignment.Top
+CreditText.Parent = CreditBox
+
+-- ==================================================
+-- LOGIC CHÍNH
+-- ==================================================
+switchTab(Tab1)
+MainFrame.Visible = true
+
+-- Anti-AFK
+LocalPlayer.Idled:Connect(function()
+    game:GetService("VirtualUser"):CaptureController()
+    game:GetService("VirtualUser"):ClickButton2(Vector2.new())
+end)
+
+-- Auto Steal
+task.spawn(function()
+    while task.wait(1) do
+        if Config.AutoSteal and getRoot() then
+            local root = getRoot()
+            local best, bestD = nil, math.huge
+            for _, obj in pairs(Workspace:GetDescendants()) do
+                if (obj:IsA("BasePart") or obj:IsA("Model")) and obj.Name:lower():find("egg") then
+                    local p = obj:IsA("BasePart") and obj or obj:FindFirstChildWhichIsA("BasePart")
+                    if p then
+                        local d = (p.Position - root.Position).Magnitude
+                        if d < bestD then bestD = d; best = p end
+                    end
+                end
+            end
+            if best then
+                root.CFrame = best.CFrame + Vector3.new(0, 3, 0)
+                task.wait(0.3)
+                for _, r in pairs(ReplicatedStorage:GetDescendants()) do
+                    if r:IsA("RemoteEvent") then
+                        local n = r.Name:lower()
+                        if n:find("steal") or n:find("take") or n:find("collect") then
+                            pcall(function() r:FireServer(best) end)
+                        end
+                    end
+                end
+                pcall(function()
+                    firetouchinterest(root, best, 0)
+                    task.wait(0.05)
+                    firetouchinterest(root, best, 1)
+                end)
+            end
+        end
+    end
+end)
+
+-- Auto Rare Hunter
+task.spawn(function()
+    while task.wait(2) do
+        if Config.AutoRare and getRoot() then
+            local root = getRoot()
+            local best, bestP, bestD = nil, 0, math.huge
+            for _, obj in pairs(Workspace:GetDescendants()) do
+                if (obj:IsA("BasePart") or obj:IsA("Model")) and obj.Name:lower():find("egg") and not obj.Name:lower():find("spawn") then
+                    local _, prio = getRarity(obj.Name)
+                    local minP = RarityPriority[Config.MinRarity] or 8
+                    if prio >= minP then
+                        local p = obj:IsA("BasePart") and obj or obj:FindFirstChildWhichIsA("BasePart")
+                        if p then
+                            local d = (p.Position - root.Position).Magnitude
+                            if prio > bestP or (prio == bestP and d < bestD) then
+                                bestP = prio; bestD = d; best = p
+                            end
+                        end
+                    end
+                end
+            end
+            if best then
+                root.CFrame = best.CFrame + Vector3.new(0, 3, 0)
+                task.wait(0.3)
+                for _, r in pairs(ReplicatedStorage:GetDescendants()) do
+                    if r:IsA("RemoteEvent") then
+                        local n = r.Name:lower()
+                        if n:find("steal") or n:find("take") or n:find("collect") then
+                            pcall(function() r:FireServer(best) end)
+                        end
+                    end
+                end
+                pcall(function()
+                    firetouchinterest(root, best, 0)
+                    task.wait(0.05)
+                    firetouchinterest(root, best, 1)
+                end)
+            end
+        end
+    end
+end)
+
+-- Auto Sell
+task.spawn(function()
+    while task.wait(3) do
+        if Config.AutoSell then
+            for _, r in pairs(ReplicatedStorage:GetDescendants()) do
+                if r:IsA("RemoteEvent") or r:IsA("RemoteFunction") then
+                    local n = r.Name:lower()
+                    if n:find("sell") or n:find("cash") then
+                        pcall(function()
+                            if r:IsA("RemoteEvent") then r:FireServer() else r:InvokeServer() end
+                        end)
+                    end
+                end
+            end
+        end
+    end
+end)
+
+-- Respawn
+LocalPlayer.CharacterAdded:Connect(function()
+    task.wait(1)
+    local hum = getHumanoid()
+    if hum and Config.SpeedHack then
+        hum.WalkSpeed = Config.WalkSpeed
+        hum.JumpPower = Config.JumpPower
+    end
+end)
+
+print("╔══════════════════════════════════════════╗")
+print("║  🥚 STEAL AN EGG ULTIMATE - LOADED 🥚    ║")
+print("║       Delta Executor Compatible          ║")
+print("╚══════════════════════════════════════════╝")
