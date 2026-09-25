@@ -1,0 +1,1167 @@
+--[[
+╔══════════════════════════════════════════════════════════╗
+║   🥚 STEAL AN EGG — ULTIMATE ALL-IN-ONE EDITION 🥚       ║
+║              Delta Executor Compatible                   ║
+║                                                          ║
+║  ✨ Menu siêu đẹp + ESP + Auto Steal + Auto Fly          ║
+║  🔒 Khóa trứng + Mang về base + Auto Nộp + God Mode      ║
+╚══════════════════════════════════════════════════════════╝
+--]]
+
+local Players = game:GetService("Players")
+local Workspace = game:GetService("Workspace")
+local RunService = game:GetService("RunService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TweenService = game:GetService("TweenService")
+local VirtualUser = game:GetService("VirtualUser")
+local LocalPlayer = Players.LocalPlayer
+
+-- ══════════════════════════════════════════════════════════
+-- ⚙️ CẤU HÌNH
+-- ══════════════════════════════════════════════════════════
+local Config = {
+    -- Main
+    AutoSteal = false,
+    AutoSell = false,
+    SpeedHack = false,
+    WalkSpeed = 100,
+    JumpPower = 120,
+    
+    -- Fly & Carry
+    AutoFlyCarry = false,
+    FlySpeed = 150,
+    MinRarity = "Secret",
+    HoldDistance = 3,
+    AutoDeposit = true,
+    LockEgg = true,
+    GodMode = false,
+    
+    -- ESP
+    ESP = false,
+}
+
+local RarityPriority = {
+    ["Divine"] = 10, ["Eternal"] = 9, ["Secret"] = 8,
+    ["Cosmic"] = 7, ["Mythic"] = 6, ["Legendary"] = 5,
+    ["Epic"] = 4, ["Rare"] = 3, ["Common"] = 1,
+}
+
+local EggPetDatabase = {
+    ["Forest Egg"] = {Pet = "Chicken/Dog/Owl/Fox/Bear", Income = "$1 - $1.8K/s"},
+    ["Lake Egg"] = {Pet = "Frog/Duckling/Turtle/Axolotl/Leviathan", Income = "$3 - $220K/s"},
+    ["Desert Egg"] = {Pet = "Jerboa/Fennec/Camel/Scorpion/Sphinx", Income = "$6 - $280K/s"},
+    ["Jungle Egg"] = {Pet = "Toucan/Gorilla/Tiger/King Snake", Income = "$90 - $3.5M/s"},
+    ["Snow Egg"] = {Pet = "Penguin/Polar Bear/Mammoth/Yeti/Ice Dragon", Income = "$500 - $65M/s"},
+    ["Volcano Egg"] = {Pet = "Lava Gecko/Cerberus/Phoenix/Lava Dragon", Income = "$2K - $100M/s"},
+    ["Ocean Egg"] = {Pet = "Shark/Orca/Kraken/El Maja", Income = "$220 - $130M/s"},
+    ["Abyss Egg"] = {Pet = "Shark/Orca/Kraken/El Maja", Income = "$220 - $130M/s"},
+    ["Prehistoric Egg"] = {Pet = "Dodo/T-Rex/Mosasaurus", Income = "$500K - $180M/s"},
+    ["Cosmic Egg"] = {Pet = "Cosmic Gecko/Dragon/Unicorn", Income = "$1.5K - $1B/s"},
+    ["Cherry Blossom Egg"] = {Pet = "Koi/Oni Tiger/Kitsune", Income = "$4K - $1.8B/s"},
+    ["Titan Egg"] = {Pet = "Spideron/Mantaris/Gorilla King/Nightflame", Income = "$95K - $3B/s"},
+    ["Angel Egg"] = {Pet = "Light Dove/Pegasus/ArchAngel", Income = "$225K - $5B/s"},
+    ["Demon Egg"] = {Pet = "Imp/Hound/World Burner", Income = "$50K - $5B/s"},
+    ["Void Egg"] = {Pet = "Rift Eye/Void Serpent/World Eater", Income = "$11K - $3.5B/s"},
+}
+
+-- Biến trạng thái
+local CarriedEgg = nil
+local CarryConnection = nil
+local flyBV, flyBG = nil, nil
+
+-- ══════════════════════════════════════════════════════════
+-- 🛠️ HÀM HỖ TRỢ
+-- ══════════════════════════════════════════════════════════
+local function getRoot()
+    local char = LocalPlayer.Character
+    return char and char:FindFirstChild("HumanoidRootPart")
+end
+
+local function getHumanoid()
+    local char = LocalPlayer.Character
+    return char and char:FindFirstChildOfClass("Humanoid")
+end
+
+local function getEggInfo(eggName)
+    if EggPetDatabase[eggName] then return EggPetDatabase[eggName] end
+    for key, data in pairs(EggPetDatabase) do
+        if eggName:lower():find(key:lower()) or key:lower():find(eggName:lower()) then
+            return data
+        end
+    end
+    return {Pet = "???", Income = "???"}
+end
+
+local function getRarity(name)
+    local l = name:lower()
+    if l:find("divine") or l:find("nightflame") or l:find("kitsune") then return "Divine", 10 end
+    if l:find("eternal") or l:find("gorilla king") or l:find("ice dragon") or l:find("lava dragon") then return "Eternal", 9 end
+    if l:find("secret") or l:find("cerberus") or l:find("kraken") or l:find("king snake") then return "Secret", 8 end
+    if l:find("cosmic") or l:find("unicorn") or l:find("leviathan") or l:find("royal sphinx") then return "Cosmic", 7 end
+    if l:find("mythic") or l:find("spider") or l:find("mammoth") then return "Mythic", 6 end
+    return "Common", 1
+end
+
+local function findMyBase()
+    for _, obj in pairs(Workspace:GetChildren()) do
+        if obj:IsA("Model") or obj:IsA("Folder") then
+            if obj.Name:lower():find(LocalPlayer.Name:lower()) then
+                local base = obj:FindFirstChild("Base") or obj:FindFirstChild("Spawn") or obj.PrimaryPart
+                if base then return base end
+            end
+        end
+    end
+    for _, obj in pairs(Workspace:GetDescendants()) do
+        if obj:IsA("BasePart") and obj.Name:lower():find("base") then
+            local owner = obj:GetAttribute("Owner") or obj:GetAttribute("Player")
+            if owner == LocalPlayer.Name then return obj end
+        end
+    end
+    for _, obj in pairs(Workspace:GetChildren()) do
+        if obj:IsA("SpawnLocation") then
+            local owner = obj:GetAttribute("Owner") or obj:GetAttribute("Player")
+            if owner == LocalPlayer.Name then return obj end
+        end
+    end
+    return Workspace:FindFirstChildOfClass("SpawnLocation")
+end
+
+-- ══════════════════════════════════════════════════════════
+-- 🔒 HỆ THỐNG KHÓA TRỨNG
+-- ══════════════════════════════════════════════════════════
+local function lockEgg(eggPart)
+    if not eggPart or not Config.LockEgg then return end
+    if eggPart:IsA("BasePart") then
+        pcall(function()
+            eggPart.Anchored = true
+            eggPart.CanCollide = false
+            eggPart.Massless = true
+            eggPart.CanTouch = false
+            eggPart.CanQuery = false
+        end)
+    end
+    CarriedEgg = eggPart
+end
+
+local function unlockEgg(eggPart)
+    eggPart = eggPart or CarriedEgg
+    if not eggPart then return end
+    if eggPart:IsA("BasePart") then
+        pcall(function()
+            eggPart.Anchored = false
+            eggPart.CanCollide = true
+            eggPart.Massless = false
+            eggPart.CanTouch = true
+            eggPart.CanQuery = true
+        end)
+    end
+    CarriedEgg = nil
+end
+
+local function startCarryLock(eggPart)
+    if CarryConnection then CarryConnection:Disconnect() end
+    if not eggPart then return end
+    CarryConnection = RunService.Heartbeat:Connect(function()
+        local root = getRoot()
+        if not root or not eggPart or not eggPart.Parent then return end
+        if not CarriedEgg or CarriedEgg ~= eggPart then return end
+        local holdPos = root.CFrame * CFrame.new(0, 0, -Config.HoldDistance)
+        eggPart.CFrame = holdPos
+        pcall(function()
+            eggPart.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+            eggPart.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+        end)
+    end)
+end
+
+local function stopCarryLock()
+    if CarryConnection then
+        CarryConnection:Disconnect()
+        CarryConnection = nil
+    end
+end
+
+-- ══════════════════════════════════════════════════════════
+-- 🚀 HỆ THỐNG BAY MƯỢT
+-- ══════════════════════════════════════════════════════════
+local function startFly()
+    local root = getRoot()
+    if not root then return end
+    if flyBV then flyBV:Destroy() end
+    if flyBG then flyBG:Destroy() end
+    flyBV = Instance.new("BodyVelocity")
+    flyBV.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+    flyBV.Velocity = Vector3.new(0, 0, 0)
+    flyBV.P = 1250
+    flyBV.Parent = root
+    flyBG = Instance.new("BodyGyro")
+    flyBG.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
+    flyBG.P = 10000
+    flyBG.D = 100
+    flyBG.CFrame = root.CFrame
+    flyBG.Parent = root
+end
+
+local function stopFly()
+    if flyBV then flyBV:Destroy() flyBV = nil end
+    if flyBG then flyBG:Destroy() flyBG = nil end
+end
+
+local function flyTo(targetPos, timeout)
+    timeout = timeout or 15
+    local root = getRoot()
+    if not root then return false end
+    startFly()
+    local startTime = tick()
+    while tick() - startTime < timeout do
+        if not flyBV or not flyBV.Parent then break end
+        local curRoot = getRoot()
+        if not curRoot then break end
+        local delta = targetPos - curRoot.Position
+        local dist = delta.Magnitude
+        if dist < 3 then
+            flyBV.Velocity = Vector3.new(0, 0, 0)
+            break
+        end
+        local dir = delta.Unit
+        flyBV.Velocity = dir * Config.FlySpeed
+        flyBG.CFrame = CFrame.new(curRoot.Position, curRoot.Position + dir)
+        RunService.Heartbeat:Wait()
+    end
+    stopFly()
+    return true
+end
+
+-- ══════════════════════════════════════════════════════════
+-- 🎯 TÌM TRỨNG
+-- ══════════════════════════════════════════════════════════
+local function findBestEgg()
+    local root = getRoot()
+    if not root then return nil end
+    local best, bestPrio, bestDist = nil, 0, math.huge
+    local minPrio = RarityPriority[Config.MinRarity] or 8
+    for _, obj in pairs(Workspace:GetDescendants()) do
+        if obj:IsA("BasePart") or obj:IsA("Model") then
+            local name = obj.Name
+            if name:lower():find("egg") 
+                and not name:lower():find("spawn") 
+                and not name:lower():find("nest")
+                and not name:lower():find("base")
+                and obj ~= CarriedEgg then
+                local _, prio = getRarity(name)
+                if prio >= minPrio then
+                    local p = obj:IsA("BasePart") and obj or obj:FindFirstChildWhichIsA("BasePart")
+                    if p then
+                        local d = (p.Position - root.Position).Magnitude
+                        if prio > bestPrio or (prio == bestPrio and d < bestDist) then
+                            bestPrio = prio
+                            bestDist = d
+                            best = {Part = p, Name = name, Rarity = getRarity(name), Priority = prio}
+                        end
+                    end
+                end
+            end
+        end
+    end
+    return best
+end
+
+local function findNearestEgg()
+    local root = getRoot()
+    if not root then return nil end
+    local best, bestD = nil, math.huge
+    for _, obj in pairs(Workspace:GetDescendants()) do
+        if (obj:IsA("BasePart") or obj:IsA("Model")) and obj.Name:lower():find("egg") and not obj.Name:lower():find("spawn") and obj ~= CarriedEgg then
+            local p = obj:IsA("BasePart") and obj or obj:FindFirstChildWhichIsA("BasePart")
+            if p then
+                local d = (p.Position - root.Position).Magnitude
+                if d < bestD then bestD = d; best = p end
+            end
+        end
+    end
+    return best
+end
+
+-- ══════════════════════════════════════════════════════════
+-- 🥚 STEAL + KHÓA + MANG VỀ
+-- ══════════════════════════════════════════════════════════
+local function fireStealRemotes(eggPart)
+    for _, r in pairs(ReplicatedStorage:GetDescendants()) do
+        if r:IsA("RemoteEvent") then
+            local n = r.Name:lower()
+            if n:find("steal") or n:find("take") or n:find("collect") or n:find("grab") then
+                pcall(function() r:FireServer(eggPart) end)
+            end
+        end
+    end
+end
+
+local function fireDepositRemotes(eggPart)
+    for _, r in pairs(ReplicatedStorage:GetDescendants()) do
+        if r:IsA("RemoteEvent") or r:IsA("RemoteFunction") then
+            local n = r.Name:lower()
+            if n:find("deposit") or n:find("place") or n:find("put") or n:find("store") then
+                pcall(function()
+                    if r:IsA("RemoteEvent") then r:FireServer(eggPart) else r:InvokeServer(eggPart) end
+                end)
+            end
+        end
+    end
+end
+
+local function stealAndCarry(eggData)
+    local root = getRoot()
+    if not root or not eggData then return false end
+    
+    -- Bay đến
+    flyTo(eggData.Part.Position + Vector3.new(0, 3, 0), 15)
+    task.wait(0.2)
+    
+    -- Steal
+    fireStealRemotes(eggData.Part)
+    pcall(function()
+        firetouchinterest(root, eggData.Part, 0)
+        task.wait(0.1)
+        firetouchinterest(root, eggData.Part, 1)
+    end)
+    task.wait(0.5)
+    
+    -- 🔒 Khóa trứng
+    if Config.LockEgg then
+        lockEgg(eggData.Part)
+        startCarryLock(eggData.Part)
+    end
+    task.wait(1.5)
+    
+    -- Bay về base (vẫn khóa)
+    local base = findMyBase()
+    if base then
+        flyTo(base.Position + Vector3.new(0, 5, 0), 25)
+        task.wait(0.5)
+        if Config.AutoDeposit then
+            fireDepositRemotes(eggData.Part)
+        end
+        task.wait(0.5)
+    end
+    
+    -- Mở khóa
+    stopCarryLock()
+    task.wait(0.3)
+    unlockEgg(eggData.Part)
+    return true
+end
+
+-- ══════════════════════════════════════════════════════════
+-- 🔄 VÒNG LẶP AUTO
+-- ══════════════════════════════════════════════════════════
+-- Auto Bay & Mang Trứng Xịn
+task.spawn(function()
+    while task.wait(1) do
+        if Config.AutoFlyCarry then
+            if CarriedEgg and CarriedEgg.Parent then continue end
+            local best = findBestEgg()
+            if best then
+                print(string.format("🎯 Bay đến: %s [%s]", best.Name, best.Rarity))
+                stealAndCarry(best)
+                task.wait(1)
+            end
+        end
+    end
+end)
+
+-- Auto Steal (gần nhất - dự phòng)
+task.spawn(function()
+    while task.wait(1) do
+        if Config.AutoSteal and not Config.AutoFlyCarry and not (CarriedEgg and CarriedEgg.Parent) then
+            local root = getRoot()
+            if root then
+                local egg = findNearestEgg()
+                if egg then
+                    root.CFrame = egg.CFrame + Vector3.new(0, 3, 0)
+                    task.wait(0.3)
+                    fireStealRemotes(egg)
+                    pcall(function()
+                        firetouchinterest(root, egg, 0)
+                        task.wait(0.05)
+                        firetouchinterest(root, egg, 1)
+                    end)
+                end
+            end
+        end
+    end
+end)
+
+-- Auto Sell
+task.spawn(function()
+    while task.wait(3) do
+        if Config.AutoSell then
+            for _, r in pairs(ReplicatedStorage:GetDescendants()) do
+                if r:IsA("RemoteEvent") or r:IsA("RemoteFunction") then
+                    local n = r.Name:lower()
+                    if n:find("sell") or n:find("cash") then
+                        pcall(function()
+                            if r:IsA("RemoteEvent") then r:FireServer() else r:InvokeServer() end
+                        end)
+                    end
+                end
+            end
+        end
+    end
+end)
+
+-- God Mode
+task.spawn(function()
+    while task.wait(0.5) do
+        if Config.GodMode then
+            local hum = getHumanoid()
+            if hum and hum.Health > 0 then
+                hum.MaxHealth = math.huge
+                hum.Health = math.huge
+            end
+        end
+    end
+end)
+
+-- Speed Hack
+task.spawn(function()
+    while task.wait(0.5) do
+        if Config.SpeedHack then
+            local hum = getHumanoid()
+            if hum then
+                hum.WalkSpeed = Config.WalkSpeed
+                hum.JumpPower = Config.JumpPower
+            end
+        end
+    end
+end)
+
+-- ESP
+task.spawn(function()
+    while task.wait(2) do
+        if Config.ESP then
+            for _, obj in pairs(Workspace:GetDescendants()) do
+                if (obj:IsA("BasePart") or obj:IsA("Model")) and obj.Name:lower():find("egg") and not obj.Name:lower():find("spawn") then
+                    local p = obj:IsA("BasePart") and obj or obj:FindFirstChildWhichIsA("BasePart")
+                    if p and not p:FindFirstChild("PetESP_Billboard") then
+                        local info = getEggInfo(obj.Name)
+                        local rarity, _ = getRarity(obj.Name)
+                        local bg = Instance.new("BillboardGui")
+                        bg.Name = "PetESP_Billboard"
+                        bg.Size = UDim2.new(0, 220, 0, 60)
+                        bg.StudsOffset = Vector3.new(0, 3, 0)
+                        bg.AlwaysOnTop = true
+                        bg.Adornee = p
+                        bg.Parent = p
+
+                        local f = Instance.new("Frame")
+                        f.Size = UDim2.new(1, 0, 1, 0)
+                        f.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+                        f.BackgroundTransparency = 0.3
+                        f.BorderSizePixel = 0
+                        f.Parent = bg
+
+                        local fc = Instance.new("UICorner")
+                        fc.CornerRadius = UDim.new(0, 6)
+                        fc.Parent = f
+
+                        local rarLbl = Instance.new("TextLabel")
+                        rarLbl.Size = UDim2.new(1, -10, 0, 16)
+                        rarLbl.Position = UDim2.new(0, 5, 0, 2)
+                        rarLbl.BackgroundTransparency = 1
+                        rarLbl.Text = "⭐ [" .. rarity .. "]"
+                        rarLbl.TextColor3 = Color3.fromRGB(255, 200, 50)
+                        rarLbl.TextScaled = true
+                        rarLbl.Font = Enum.Font.GothamBold
+                        rarLbl.TextXAlignment = Enum.TextXAlignment.Left
+                        rarLbl.Parent = f
+
+                        local pl = Instance.new("TextLabel")
+                        pl.Size = UDim2.new(1, -10, 0, 20)
+                        pl.Position = UDim2.new(0, 5, 0, 18)
+                        pl.BackgroundTransparency = 1
+                        pl.Text = "🐾 " .. info.Pet
+                        pl.TextColor3 = Color3.fromRGB(255, 255, 100)
+                        pl.TextScaled = true
+                        pl.Font = Enum.Font.GothamBold
+                        pl.TextXAlignment = Enum.TextXAlignment.Left
+                        pl.Parent = f
+
+                        local ml = Instance.new("TextLabel")
+                        ml.Size = UDim2.new(1, -10, 0, 18)
+                        ml.Position = UDim2.new(0, 5, 0, 38)
+                        ml.BackgroundTransparency = 1
+                        ml.Text = "💰 " .. info.Income
+                        ml.TextColor3 = Color3.fromRGB(100, 255, 100)
+                        ml.TextScaled = true
+                        ml.Font = Enum.Font.Gotham
+                        ml.TextXAlignment = Enum.TextXAlignment.Left
+                        ml.Parent = f
+                    end
+                end
+            end
+        else
+            for _, obj in pairs(Workspace:GetDescendants()) do
+                if obj.Name == "PetESP_Billboard" then obj:Destroy() end
+            end
+        end
+    end
+end)
+
+-- Anti-AFK
+LocalPlayer.Idled:Connect(function()
+    VirtualUser:CaptureController()
+    VirtualUser:ClickButton2(Vector2.new())
+end)
+
+-- ══════════════════════════════════════════════════════════
+-- 🎨 MENU UI SIÊU ĐẸP
+-- ══════════════════════════════════════════════════════════
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "StealEggUltimate"
+ScreenGui.ResetOnSpawn = false
+ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+
+-- Floating Button
+local OpenBtn = Instance.new("TextButton")
+OpenBtn.Size = UDim2.new(0, 60, 0, 60)
+OpenBtn.Position = UDim2.new(0, 20, 0.5, -30)
+OpenBtn.BackgroundColor3 = Color3.fromRGB(255, 100, 150)
+OpenBtn.Text = "🥚"
+OpenBtn.TextSize = 30
+OpenBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+OpenBtn.Font = Enum.Font.GothamBold
+OpenBtn.BorderSizePixel = 0
+OpenBtn.AutoButtonColor = false
+OpenBtn.Parent = ScreenGui
+
+local OCorner = Instance.new("UICorner")
+OCorner.CornerRadius = UDim.new(1, 0)
+OCorner.Parent = OpenBtn
+
+local OGrad = Instance.new("UIGradient")
+OGrad.Color = ColorSequence.new({
+    ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 100, 150)),
+    ColorSequenceKeypoint.new(1, Color3.fromRGB(150, 80, 255)),
+})
+OGrad.Rotation = 45
+OGrad.Parent = OpenBtn
+
+local OStroke = Instance.new("UIStroke")
+OStroke.Color = Color3.fromRGB(255, 255, 255)
+OStroke.Thickness = 2
+OStroke.Transparency = 0.3
+OStroke.Parent = OpenBtn
+
+-- Pulse animation
+task.spawn(function()
+    while OpenBtn.Parent do
+        TweenService:Create(OpenBtn, TweenInfo.new(1, Enum.EasingStyle.Sine), {
+            Size = UDim2.new(0, 68, 0, 68)
+        }):Play()
+        task.wait(1)
+        TweenService:Create(OpenBtn, TweenInfo.new(1, Enum.EasingStyle.Sine), {
+            Size = UDim2.new(0, 60, 0, 60)
+        }):Play()
+        task.wait(1)
+    end
+end)
+
+-- Main Frame
+local MainFrame = Instance.new("Frame")
+MainFrame.Size = UDim2.new(0, 420, 0, 520)
+MainFrame.Position = UDim2.new(0.5, -210, 0.5, -260)
+MainFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 25)
+MainFrame.BorderSizePixel = 0
+MainFrame.Active = true
+MainFrame.Draggable = true
+MainFrame.Visible = false
+MainFrame.Parent = ScreenGui
+
+local MCorner = Instance.new("UICorner")
+MCorner.CornerRadius = UDim.new(0, 16)
+MCorner.Parent = MainFrame
+
+local MStroke = Instance.new("UIStroke")
+MStroke.Color = Color3.fromRGB(255, 100, 150)
+MStroke.Thickness = 2
+MStroke.Transparency = 0.2
+MStroke.Parent = MainFrame
+
+local MGrad = Instance.new("UIGradient")
+MGrad.Color = ColorSequence.new({
+    ColorSequenceKeypoint.new(0, Color3.fromRGB(25, 20, 40)),
+    ColorSequenceKeypoint.new(1, Color3.fromRGB(15, 15, 30)),
+})
+MGrad.Rotation = 90
+MGrad.Parent = MainFrame
+
+-- Header
+local Header = Instance.new("Frame")
+Header.Size = UDim2.new(1, 0, 0, 65)
+Header.BackgroundColor3 = Color3.fromRGB(255, 100, 150)
+Header.BorderSizePixel = 0
+Header.Parent = MainFrame
+
+local HCorner = Instance.new("UICorner")
+HCorner.CornerRadius = UDim.new(0, 16)
+HCorner.Parent = Header
+
+local HGrad = Instance.new("UIGradient")
+HGrad.Color = ColorSequence.new({
+    ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 100, 150)),
+    ColorSequenceKeypoint.new(0.5, Color3.fromRGB(200, 80, 200)),
+    ColorSequenceKeypoint.new(1, Color3.fromRGB(120, 80, 255)),
+})
+HGrad.Rotation = 0
+HGrad.Parent = Header
+
+local HFix = Instance.new("Frame")
+HFix.Size = UDim2.new(1, 0, 0, 16)
+HFix.Position = UDim2.new(0, 0, 1, -16)
+HFix.BackgroundColor3 = Color3.fromRGB(255, 100, 150)
+HFix.BorderSizePixel = 0
+HFix.ZIndex = 0
+HFix.Parent = Header
+
+local HFixGrad = Instance.new("UIGradient")
+HFixGrad.Color = HGrad.Color
+HFixGrad.Parent = HFix
+
+local Title = Instance.new("TextLabel")
+Title.Size = UDim2.new(1, -60, 1, 0)
+Title.Position = UDim2.new(0, 20, 0, 0)
+Title.BackgroundTransparency = 1
+Title.Text = "🥚 STEAL AN EGG — ULTIMATE"
+Title.TextColor3 = Color3.fromRGB(255, 255, 255)
+Title.TextSize = 19
+Title.Font = Enum.Font.GothamBlack
+Title.TextXAlignment = Enum.TextXAlignment.Left
+Title.Parent = Header
+
+local Subtitle = Instance.new("TextLabel")
+Subtitle.Size = UDim2.new(1, -60, 0, 16)
+Subtitle.Position = UDim2.new(0, 22, 1, -22)
+Subtitle.BackgroundTransparency = 1
+Subtitle.Text = "All-in-One  •  Delta Executor  •  v2.0"
+Subtitle.TextColor3 = Color3.fromRGB(255, 255, 255)
+Subtitle.TextTransparency = 0.3
+Subtitle.TextSize = 11
+Subtitle.Font = Enum.Font.Gotham
+Subtitle.TextXAlignment = Enum.TextXAlignment.Left
+Subtitle.Parent = Header
+
+local CloseBtn = Instance.new("TextButton")
+CloseBtn.Size = UDim2.new(0, 32, 0, 32)
+CloseBtn.Position = UDim2.new(1, -42, 0, 16)
+CloseBtn.BackgroundColor3 = Color3.fromRGB(255, 70, 70)
+CloseBtn.Text = "✕"
+CloseBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+CloseBtn.Font = Enum.Font.GothamBold
+CloseBtn.TextSize = 16
+CloseBtn.BorderSizePixel = 0
+CloseBtn.Parent = Header
+
+local CCorner = Instance.new("UICorner")
+CCorner.CornerRadius = UDim.new(1, 0)
+CCorner.Parent = CloseBtn
+
+CloseBtn.MouseButton1Click:Connect(function()
+    TweenService:Create(MainFrame, TweenInfo.new(0.3, Enum.EasingStyle.Back), {
+        Size = UDim2.new(0, 0, 0, 0),
+        Position = UDim2.new(0.5, 0, 0.5, 0),
+    }):Play()
+    task.wait(0.3)
+    MainFrame.Visible = false
+    MainFrame.Size = UDim2.new(0, 420, 0, 520)
+    MainFrame.Position = UDim2.new(0.5, -210, 0.5, -260)
+end)
+
+OpenBtn.MouseButton1Click:Connect(function()
+    if MainFrame.Visible then
+        TweenService:Create(MainFrame, TweenInfo.new(0.3, Enum.EasingStyle.Back), {
+            Size = UDim2.new(0, 0, 0, 0),
+            Position = UDim2.new(0.5, 0, 0.5, 0),
+        }):Play()
+        task.wait(0.3)
+        MainFrame.Visible = false
+        MainFrame.Size = UDim2.new(0, 420, 0, 520)
+        MainFrame.Position = UDim2.new(0.5, -210, 0.5, -260)
+    else
+        MainFrame.Visible = true
+        MainFrame.Size = UDim2.new(0, 0, 0, 0)
+        MainFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
+        TweenService:Create(MainFrame, TweenInfo.new(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+            Size = UDim2.new(0, 420, 0, 520),
+            Position = UDim2.new(0.5, -210, 0.5, -260),
+        }):Play()
+    end
+end)
+
+-- Tab Bar
+local TabBar = Instance.new("Frame")
+TabBar.Size = UDim2.new(1, -30, 0, 40)
+TabBar.Position = UDim2.new(0, 15, 0, 75)
+TabBar.BackgroundColor3 = Color3.fromRGB(25, 25, 40)
+TabBar.BorderSizePixel = 0
+TabBar.Parent = MainFrame
+
+local TabBarCorner = Instance.new("UICorner")
+TabBarCorner.CornerRadius = UDim.new(0, 10)
+TabBarCorner.Parent = TabBar
+
+local TabLayout = Instance.new("UIListLayout")
+TabLayout.FillDirection = Enum.FillDirection.Horizontal
+TabLayout.Padding = UDim.new(0, 5)
+TabLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+TabLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+TabLayout.Parent = TabBar
+
+-- Content
+local ContentFrame = Instance.new("Frame")
+ContentFrame.Size = UDim2.new(1, -30, 1, -200)
+ContentFrame.Position = UDim2.new(0, 15, 0, 125)
+ContentFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 32)
+ContentFrame.BorderSizePixel = 0
+ContentFrame.Parent = MainFrame
+
+local ContentCorner = Instance.new("UICorner")
+ContentCorner.CornerRadius = UDim.new(0, 12)
+ContentCorner.Parent = ContentFrame
+
+local Scroll = Instance.new("ScrollingFrame")
+Scroll.Size = UDim2.new(1, -16, 1, -16)
+Scroll.Position = UDim2.new(0, 8, 0, 8)
+Scroll.BackgroundTransparency = 1
+Scroll.BorderSizePixel = 0
+Scroll.ScrollBarThickness = 4
+Scroll.ScrollBarImageColor3 = Color3.fromRGB(255, 100, 150)
+Scroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+Scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+Scroll.Parent = ContentFrame
+
+local SLayout = Instance.new("UIListLayout")
+SLayout.Padding = UDim.new(0, 8)
+SLayout.SortOrder = Enum.SortOrder.LayoutOrder
+SLayout.Parent = Scroll
+
+local SPad = Instance.new("UIPadding")
+SPad.PaddingTop = UDim.new(0, 5)
+SPad.PaddingLeft = UDim.new(0, 5)
+SPad.PaddingRight = UDim.new(0, 5)
+SPad.Parent = Scroll
+
+-- Tạo Tab
+local Tabs = {}
+local TabContainers = {}
+local CurrentTab = nil
+
+local function createTab(name, emoji)
+    local TabBtn = Instance.new("TextButton")
+    TabBtn.Size = UDim2.new(0, 90, 0, 30)
+    TabBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 60)
+    TabBtn.Text = emoji .. " " .. name
+    TabBtn.TextColor3 = Color3.fromRGB(180, 180, 200)
+    TabBtn.Font = Enum.Font.GothamBold
+    TabBtn.TextSize = 12
+    TabBtn.BorderSizePixel = 0
+    TabBtn.AutoButtonColor = false
+    TabBtn.Parent = TabBar
+
+    local TabCorner = Instance.new("UICorner")
+    TabCorner.CornerRadius = UDim.new(0, 8)
+    TabCorner.Parent = TabBtn
+
+    -- Container cho tab
+    local Container = Instance.new("Frame")
+    Container.Size = UDim2.new(1, 0, 1, 0)
+    Container.BackgroundTransparency = 1
+    Container.Visible = false
+    Container.Parent = Scroll
+
+    local CLayout = Instance.new("UIListLayout")
+    CLayout.Padding = UDim.new(0, 8)
+    CLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    CLayout.Parent = Container
+
+    TabContainers[TabBtn] = Container
+    
+    TabBtn.MouseButton1Click:Connect(function()
+        for btn, cont in pairs(TabContainers) do
+            cont.Visible = false
+            TweenService:Create(btn, TweenInfo.new(0.2), {
+                BackgroundColor3 = Color3.fromRGB(40, 40, 60),
+                TextColor3 = Color3.fromRGB(180, 180, 200)
+            }):Play()
+        end
+        Container.Visible = true
+        TweenService:Create(TabBtn, TweenInfo.new(0.2), {
+            BackgroundColor3 = Color3.fromRGB(255, 100, 150),
+            TextColor3 = Color3.fromRGB(255, 255, 255)
+        }):Play()
+        CurrentTab = TabBtn
+    end)
+    
+    return TabBtn, Container
+end
+
+local Tab1, Container1 = createTab("Main", "🎮")
+local Tab2, Container2 = createTab("Hunter", "🎯")
+local Tab3, Container3 = createTab("ESP", "👁️")
+local Tab4, Container4 = createTab("Info", "📊")
+
+-- Hàm tạo Toggle
+local function createToggle(container, text, emoji, color, default, callback)
+    local Btn = Instance.new("TextButton")
+    Btn.Size = UDim2.new(1, -10, 0, 48)
+    Btn.BackgroundColor3 = Color3.fromRGB(30, 30, 48)
+    Btn.Text = ""
+    Btn.AutoButtonColor = false
+    Btn.BorderSizePixel = 0
+    Btn.Parent = container
+
+    local BCorner = Instance.new("UICorner")
+    BCorner.CornerRadius = UDim.new(0, 10)
+    BCorner.Parent = Btn
+
+    local BStroke = Instance.new("UIStroke")
+    BStroke.Color = Color3.fromRGB(60, 60, 90)
+    BStroke.Thickness = 1
+    BStroke.Parent = Btn
+
+    local Icon = Instance.new("TextLabel")
+    Icon.Size = UDim2.new(0, 45, 1, 0)
+    Icon.BackgroundTransparency = 1
+    Icon.Text = emoji
+    Icon.TextSize = 22
+    Icon.Font = Enum.Font.GothamBold
+    Icon.Parent = Btn
+
+    local Label = Instance.new("TextLabel")
+    Label.Size = UDim2.new(1, -140, 1, 0)
+    Label.Position = UDim2.new(0, 50, 0, 0)
+    Label.BackgroundTransparency = 1
+    Label.Text = text
+    Label.TextColor3 = Color3.fromRGB(230, 230, 240)
+    Label.TextSize = 14
+    Label.Font = Enum.Font.GothamBold
+    Label.TextXAlignment = Enum.TextXAlignment.Left
+    Label.Parent = Btn
+
+    local Ind = Instance.new("Frame")
+    Ind.Size = UDim2.new(0, 50, 0, 24)
+    Ind.Position = UDim2.new(1, -60, 0.5, -12)
+    Ind.BackgroundColor3 = Color3.fromRGB(50, 50, 70)
+    Ind.BorderSizePixel = 0
+    Ind.Parent = Btn
+
+    local ICorner = Instance.new("UICorner")
+    ICorner.CornerRadius = UDim.new(1, 0)
+    ICorner.Parent = Ind
+
+    local Dot = Instance.new("Frame")
+    Dot.Size = UDim2.new(0, 18, 0, 18)
+    Dot.Position = UDim2.new(0, 3, 0.5, -9)
+    Dot.BackgroundColor3 = Color3.fromRGB(150, 150, 170)
+    Dot.BorderSizePixel = 0
+    Dot.Parent = Ind
+
+    local DCorner = Instance.new("UICorner")
+    DCorner.CornerRadius = UDim.new(1, 0)
+    DCorner.Parent = Dot
+
+    local state = default or false
+    if state then
+        Ind.BackgroundColor3 = color
+        Dot.Position = UDim2.new(1, -21, 0.5, -9)
+        Dot.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+        BStroke.Color = color
+        callback(true)
+    end
+
+    Btn.MouseButton1Click:Connect(function()
+        state = not state
+        callback(state)
+        if state then
+            TweenService:Create(Ind, TweenInfo.new(0.25), {BackgroundColor3 = color}):Play()
+            TweenService:Create(Dot, TweenInfo.new(0.25, Enum.EasingStyle.Back), {
+                Position = UDim2.new(1, -21, 0.5, -9),
+                BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+            }):Play()
+            TweenService:Create(BStroke, TweenInfo.new(0.25), {Color = color}):Play()
+        else
+            TweenService:Create(Ind, TweenInfo.new(0.25), {BackgroundColor3 = Color3.fromRGB(50, 50, 70)}):Play()
+            TweenService:Create(Dot, TweenInfo.new(0.25, Enum.EasingStyle.Back), {
+                Position = UDim2.new(0, 3, 0.5, -9),
+                BackgroundColor3 = Color3.fromRGB(150, 150, 170)
+            }):Play()
+            TweenService:Create(BStroke, TweenInfo.new(0.25), {Color = Color3.fromRGB(60, 60, 90)}):Play()
+        end
+    end)
+
+    return Btn
+end
+
+-- ══════════════════════════════════════════════════════════
+-- TAB 1: MAIN
+-- ══════════════════════════════════════════════════════════
+createToggle(Container1, "Auto Steal Egg", "🥚", Color3.fromRGB(255, 100, 150), false, function(s) Config.AutoSteal = s end)
+createToggle(Container1, "Auto Sell", "💰", Color3.fromRGB(100, 255, 150), false, function(s) Config.AutoSell = s end)
+createToggle(Container1, "Speed Hack", "⚡", Color3.fromRGB(255, 220, 80), false, function(s)
+    Config.SpeedHack = s
+    local hum = getHumanoid()
+    if hum and not s then
+        hum.WalkSpeed = 16
+        hum.JumpPower = 50
+    end
+end)
+createToggle(Container1, "God Mode", "🛡️", Color3.fromRGB(255, 100, 100), false, function(s) Config.GodMode = s end)
+
+-- Nút Teleport Base
+local BaseBtn = Instance.new("TextButton")
+BaseBtn.Size = UDim2.new(1, -10, 0, 45)
+BaseBtn.BackgroundColor3 = Color3.fromRGB(80, 60, 180)
+BaseBtn.Text = "🏠  Teleport về Base"
+BaseBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+BaseBtn.Font = Enum.Font.GothamBold
+BaseBtn.TextSize = 15
+BaseBtn.BorderSizePixel = 0
+BaseBtn.AutoButtonColor = false
+BaseBtn.Parent = Container1
+
+local BaseCorner = Instance.new("UICorner")
+BaseCorner.CornerRadius = UDim.new(0, 10)
+BaseCorner.Parent = BaseBtn
+
+BaseBtn.MouseButton1Click:Connect(function()
+    local base = findMyBase()
+    if base then
+        local root = getRoot()
+        if root then root.CFrame = base.CFrame + Vector3.new(0, 5, 0) end
+    end
+end)
+
+-- ══════════════════════════════════════════════════════════
+-- TAB 2: HUNTER (Fly & Carry)
+-- ══════════════════════════════════════════════════════════
+createToggle(Container2, "🚀 Auto Bay & Mang Trứng", "🚀", Color3.fromRGB(80, 200, 255), false, function(s) Config.AutoFlyCarry = s end)
+createToggle(Container2, "🔒 KHÓA TRỨNG KHI BAY", "🔒", Color3.fromRGB(255, 100, 200), true, function(s) Config.LockEgg = s end)
+createToggle(Container2, "📦 Auto Nộp Trứng", "📦", Color3.fromRGB(100, 255, 150), true, function(s) Config.AutoDeposit = s end)
+
+-- Rarity Picker
+local RarLabel = Instance.new("TextLabel")
+RarLabel.Size = UDim2.new(1, -10, 0, 22)
+RarLabel.BackgroundTransparency = 1
+RarLabel.Text = "🎚️ Rarity tối thiểu: Secret"
+RarLabel.TextColor3 = Color3.fromRGB(200, 200, 220)
+RarLabel.Font = Enum.Font.GothamBold
+RarLabel.TextSize = 13
+RarLabel.TextXAlignment = Enum.TextXAlignment.Left
+RarLabel.Parent = Container2
+
+local RarBtn = Instance.new("TextButton")
+RarBtn.Size = UDim2.new(1, -10, 0, 38)
+RarBtn.BackgroundColor3 = Color3.fromRGB(50, 30, 70)
+RarBtn.Text = "Secret  ▼"
+RarBtn.TextColor3 = Color3.fromRGB(255, 200, 255)
+RarBtn.Font = Enum.Font.GothamBold
+RarBtn.TextSize = 14
+RarBtn.BorderSizePixel = 0
+RarBtn.Parent = Container2
+
+local RbCorner = Instance.new("UICorner")
+RbCorner.CornerRadius = UDim.new(0, 10)
+RbCorner.Parent = RarBtn
+
+local rarities = {"Cosmic", "Secret", "Eternal", "Divine"}
+local rIdx = 2
+
+RarBtn.MouseButton1Click:Connect(function()
+    rIdx = rIdx + 1
+    if rIdx > #rarities then rIdx = 1 end
+    RarBtn.Text = rarities[rIdx] .. "  ▼"
+    Config.MinRarity = rarities[rIdx]
+    RarLabel.Text = "🎚️ Rarity tối thiểu: " .. rarities[rIdx]
+end)
+
+-- Speed Picker
+local SpeedLabel = Instance.new("TextLabel")
+SpeedLabel.Size = UDim2.new(1, -10, 0, 22)
+SpeedLabel.BackgroundTransparency = 1
+SpeedLabel.Text = "⚡ Tốc độ bay: 150"
+SpeedLabel.TextColor3 = Color3.fromRGB(200, 200, 220)
+SpeedLabel.Font = Enum.Font.GothamBold
+SpeedLabel.TextSize = 13
+SpeedLabel.TextXAlignment = Enum.TextXAlignment.Left
+SpeedLabel.Parent = Container2
+
+local SpeedBtn = Instance.new("TextButton")
+SpeedBtn.Size = UDim2.new(1, -10, 0, 38)
+SpeedBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 60)
+SpeedBtn.Text = "🐢 100  →  🐇 500"
+SpeedBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+SpeedBtn.Font = Enum.Font.GothamBold
+SpeedBtn.TextSize = 13
+SpeedBtn.BorderSizePixel = 0
+SpeedBtn.Parent = Container2
+
+local SbCorner = Instance.new("UICorner")
+SbCorner.CornerRadius = UDim.new(0, 10)
+SbCorner.Parent = SpeedBtn
+
+local speedValues = {100, 150, 200, 300, 400, 500}
+local sIdx = 2
+
+SpeedBtn.MouseButton1Click:Connect(function()
+    sIdx = sIdx + 1
+    if sIdx > #speedValues then sIdx = 1 end
+    Config.FlySpeed = speedValues[sIdx]
+    SpeedLabel.Text = "⚡ Tốc độ bay: " .. Config.FlySpeed
+end)
+
+-- Status Box
+local StatusLbl = Instance.new("TextLabel")
+StatusLbl.Size = UDim2.new(1, -10, 0, 80)
+StatusLbl.BackgroundColor3 = Color3.fromRGB(30, 40, 55)
+StatusLbl.Text = "💤 Đang chờ...\n🔒 Khóa trứng: BẬT\nBật Auto để bắt đầu"
+StatusLbl.TextColor3 = Color3.fromRGB(200, 220, 255)
+StatusLbl.Font = Enum.Font.Gotham
+StatusLbl.TextSize = 12
+StatusLbl.BorderSizePixel = 0
+StatusLbl.Parent = Container2
+
+local StCorner = Instance.new("UICorner")
+StCorner.CornerRadius = UDim.new(0, 10)
+StCorner.Parent = StatusLbl
+
+-- Update status
+task.spawn(function()
+    while task.wait(0.5) do
+        if CarriedEgg and CarriedEgg.Parent then
+            StatusLbl.Text = string.format("🔒 ĐANG GIỮ: %s\n🔐 Trạng thái: KHÓA CHẶT", CarriedEgg.Name)
+            StatusLbl.TextColor3 = Color3.fromRGB(255, 200, 100)
+        elseif Config.AutoFlyCarry then
+            local best = findBestEgg()
+            if best then
+                StatusLbl.Text = string.format("🎯 Đang bay đến:\n%s [%s]", best.Name, best.Rarity)
+                StatusLbl.TextColor3 = Color3.fromRGB(200, 220, 255)
+            else
+                StatusLbl.Text = "🔍 Đang tìm trứng xịn..."
+                StatusLbl.TextColor3 = Color3.fromRGB(200, 220, 255)
+            end
+        else
+            StatusLbl.Text = "💤 Đang chờ...\n🔒 Khóa trứng: " .. (Config.LockEgg and "BẬT" or "TẮT")
+            StatusLbl.TextColor3 = Color3.fromRGB(200, 220, 255)
+        end
+    end
+end)
+
+-- ══════════════════════════════════════════════════════════
+-- TAB 3: ESP
+-- ══════════════════════════════════════════════════════════
+createToggle(Container3, "👁️ ESP Tên Pet & Tiền", "👁️", Color3.fromRGB(100, 200, 255), false, function(s) Config.ESP = s end)
+
+-- Info Box cho ESP
+local EspInfo = Instance.new("TextLabel")
+EspInfo.Size = UDim2.new(1, -10, 0, 130)
+EspInfo.BackgroundColor3 = Color3.fromRGB(30, 25, 50)
+EspInfo.Text = "💡 ESP hiển thị:\n\n" ..
+    "⭐ Rarity của trứng\n" ..
+    "🐾 Tên pet có thể nở\n" ..
+    "💰 Thu nhập ($/s)\n\n" ..
+    "Bật để xem thông tin ngay trên trứng!"
+EspInfo.TextColor3 = Color3.fromRGB(220, 220, 240)
+EspInfo.Font = Enum.Font.Gotham
+EspInfo.TextSize = 12
+EspInfo.TextXAlignment = Enum.TextXAlignment.Left
+EspInfo.TextYAlignment = Enum.TextYAlignment.Top
+EspInfo.BorderSizePixel = 0
+EspInfo.Parent = Container3
+
+local EiCorner = Instance.new("UICorner")
+EiCorner.CornerRadius = UDim.new(0, 10)
+EiCorner.Parent = EspInfo
+
+local EiPad = Instance.new("UIPadding")
+EiPad.PaddingTop = UDim.new(0, 8)
+EiPad.PaddingLeft = UDim.new(0, 10)
+EiPad.PaddingRight = UDim.new(0, 10)
+EiPad.Parent = EspInfo
+
+-- ══════════════════════════════════════════════════════════
+-- TAB 4: INFO
+-- ══════════════════════════════════════════════════════════
+local InfoBox = Instance.new("TextLabel")
+InfoBox.Size = UDim2.new(1, -10, 0, 300)
+InfoBox.BackgroundColor3 = Color3.fromRGB(25, 20, 40)
+InfoBox.Text = "🥚 STEAL AN EGG ULTIMATE 🥚\n\n" ..
+    "📌 Version: 2.0\n" ..
+    "⚙️ Executor: Delta\n\n" ..
+    "✨ TÍNH NĂNG:\n" ..
+    "• Auto Steal Egg\n" ..
+    "• Auto Bay & Mang Trứng\n" ..
+    "• 🔒 Khóa Trứng (không rơi)\n" ..
+    "• Auto Nộp Trứng\n" ..
+    "• ESP Tên Pet & Tiền\n" ..
+    "• Auto Sell\n" ..
+    "• Speed Hack\n" ..
+    "• God Mode\n" ..
+    "• Anti-AFK\n\n" ..
+    "💡 TIP:\n" ..
+    "Bật ESP + Auto Hunter\n" ..
+    "để farm trứng xịn nhất!"
+InfoBox.TextColor3 = Color3.fromRGB(220, 220, 240)
+InfoBox.Font = Enum.Font.Gotham
+InfoBox.TextSize = 12
+InfoBox.TextXAlignment = Enum.TextXAlignment.Left
+InfoBox.TextYAlignment = Enum.TextYAlignment.Top
+InfoBox.BorderSizePixel = 0
+InfoBox.Parent = Container4
+
+local IbCorner = Instance.new("UICorner")
+IbCorner.CornerRadius = UDim.new(0, 10)
+IbCorner.Parent = InfoBox
+
+local IbPad = Instance.new("UIPadding")
+IbPad.PaddingTop = UDim.new(0, 10)
+IbPad.PaddingLeft = UDim.new(0, 12)
+IbPad.PaddingRight = UDim.new(0, 12)
+IbPad.Parent = InfoBox
+
+-- Khởi tạo tab đầu tiên
+Tab1.MouseButton1Click:Fire()
+
+-- ══════════════════════════════════════════════════════════
+-- 🎬 RESPAWN HANDLER
+-- ══════════════════════════════════════════════════════════
+LocalPlayer.CharacterAdded:Connect(function()
+    task.wait(1)
+    CarriedEgg = nil
+    stopCarryLock()
+    if Config.GodMode then
+        local hum = getHumanoid()
+        if hum then
+            hum.MaxHealth = math.huge
+            hum.Health = math.huge
+        end
+    end
+    if Config.SpeedHack then
+        local hum = getHumanoid()
+        if hum then
+            hum.WalkSpeed = Config.WalkSpeed
+            hum.JumpPower = Config.JumpPower
+        end
+    end
+end)
+
+-- Cleanup
+game:BindToClose(function()
+    stopCarryLock()
+    unlockEgg()
+end)
+
+print("╔══════════════════════════════════════════════════════════╗")
+print("║  🥚 STEAL AN EGG — ULTIMATE ALL-IN-ONE - LOADED 🥚      ║")
+print("║     Menu + ESP + Auto + Fly + Lock + Carry               ║")
+print("╚══════════════════════════════════════════════════════════╝")
+print("💡 Nhấn nút 🥚 để mở menu")
