@@ -1,0 +1,1243 @@
+-- ==========================================================
+-- SCRIPT FPV FTAP - B52 + DEAD HAND + DRONE MICRO-EXPLORATION
+-- ==========================================================
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
+local CoreGui = game:GetService("CoreGui")
+local UserInputService = game:GetService("UserInputService")
+
+local LocalPlayer = Players.LocalPlayer
+
+local targetPart = nil
+local selectedBombs = {}   
+local selectedTargets = {} 
+
+-- Biến cho Drone Trinh Thám tự động & Bản đồ tổng kết
+local selectedDrone = nil
+local isDroneSteering = false
+local droneSpeed = 160
+local droneHiddenParts = {}
+local droneHighlights = {}
+local dronePathParts = {}
+local droneStartPosition = nil
+local droneTimer = 0
+local isDroneReturning = false
+
+-- Biến trạng thái thám hiểm ngóc ngách siêu nhỏ
+local currentEntranceTarget = nil
+local isPenetratingGap = false
+local penetrationTimer = 0
+
+-- Dữ liệu tổng kết bản đồ
+local scannedMapData = {
+    blocked = {},    
+    entrances = {},  
+    general = {}     
+}
+
+local isSteering = false
+local flySpeed = 200 
+local sensitivity = 0.25
+local maxSignalRange = 5000 
+
+local renderConn = nil
+local touchConn = nil
+local inputConn = nil
+local hiddenParts = {}
+
+local cameraYaw = 0
+local cameraPitch = 0
+
+local batteryPercent = 100
+local batteryVoltage = 16.8
+local currentDraw = 12.5
+
+local lastAttacker = nil
+
+-- Dọn dẹp GUI cũ nếu có
+if CoreGui:FindFirstChild("FTAP_FPV_OSD_System") then
+    CoreGui.FTAP_FPV_OSD_System:Destroy()
+end
+
+if CoreGui:FindFirstChild("DeadHand_System") then
+    CoreGui.DeadHand_System:Destroy()
+end
+
+if CoreGui:FindFirstChild("FTAP_MapSummary_System") then
+    CoreGui.FTAP_MapSummary_System:Destroy()
+end
+
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "FTAP_FPV_OSD_System"
+local success, guiParent = pcall(function() return gethui() end)
+ScreenGui.Parent = (success and guiParent) or CoreGui
+
+-- ==================== HÀM KIỂM TRA MỤC TIÊU BỊ CHE/VÙNG ĐỎ ====================
+local function isPositionBlocked(pos)
+    for _, blockedPos in ipairs(scannedMapData.blocked) do
+        if (blockedPos - pos).Magnitude < 25 then
+            return true
+        end
+    end
+    return false
+end
+
+-- ==================== MAIN CONTROL MENU ====================
+local Main = Instance.new("Frame", ScreenGui)
+Main.Size = UDim2.new(0, 190, 0, 230)
+Main.Position = UDim2.new(0.02, 0, 0.3, 0)
+Main.BackgroundColor3 = Color3.fromRGB(20, 20, 30)
+Main.Active = true
+Main.Draggable = true
+Instance.new("UICorner", Main).CornerRadius = UDim.new(0, 8)
+
+local Title = Instance.new("TextLabel", Main)
+Title.Size = UDim2.new(1, 0, 0, 26)
+Title.Text = "FTAP FPV & DRONE MICRO-SCAN"
+Title.TextColor3 = Color3.fromRGB(255, 255, 255)
+Title.BackgroundColor3 = Color3.fromRGB(35, 35, 55)
+Title.Font = Enum.Font.SourceSansBold
+Title.TextSize = 11
+Instance.new("UICorner", Title).CornerRadius = UDim.new(0, 8)
+
+local LockBtn = Instance.new("TextButton", Main)
+LockBtn.Size = UDim2.new(0.9, 0, 0, 24)
+LockBtn.Position = UDim2.new(0.05, 0, 0, 30)
+LockBtn.Text = "1. CHỌN BOM (0)"
+LockBtn.BackgroundColor3 = Color3.fromRGB(52, 152, 219)
+LockBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+LockBtn.Font = Enum.Font.SourceSansBold
+LockBtn.TextSize = 11
+Instance.new("UICorner", LockBtn).CornerRadius = UDim.new(0, 6)
+
+local OpenListBtn = Instance.new("TextButton", Main)
+OpenListBtn.Size = UDim2.new(0.9, 0, 0, 24)
+OpenListBtn.Position = UDim2.new(0.05, 0, 0, 58)
+OpenListBtn.Text = "CHỌN TÊN MỤC TIÊU"
+OpenListBtn.BackgroundColor3 = Color3.fromRGB(142, 68, 173)
+OpenListBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+OpenListBtn.Font = Enum.Font.SourceSansBold
+OpenListBtn.TextSize = 11
+Instance.new("UICorner", OpenListBtn).CornerRadius = UDim.new(0, 6)
+
+local DriveBtn = Instance.new("TextButton", Main)
+DriveBtn.Size = UDim2.new(0.9, 0, 0, 24)
+DriveBtn.Position = UDim2.new(0.05, 0, 0, 86)
+DriveBtn.Text = "2. LÁI FPV BOM: TẮT"
+DriveBtn.BackgroundColor3 = Color3.fromRGB(231, 76, 60)
+DriveBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+DriveBtn.Font = Enum.Font.SourceSansBold
+DriveBtn.TextSize = 11
+Instance.new("UICorner", DriveBtn).CornerRadius = UDim.new(0, 6)
+
+local DroneSelectBtn = Instance.new("TextButton", Main)
+DroneSelectBtn.Size = UDim2.new(0.9, 0, 0, 24)
+DroneSelectBtn.Position = UDim2.new(0.05, 0, 0, 114)
+DroneSelectBtn.Text = "3. CHỌN DRONE (TRỐNG)"
+DroneSelectBtn.BackgroundColor3 = Color3.fromRGB(41, 128, 185)
+DroneSelectBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+DroneSelectBtn.Font = Enum.Font.SourceSansBold
+DroneSelectBtn.TextSize = 11
+Instance.new("UICorner", DroneSelectBtn).CornerRadius = UDim.new(0, 6)
+
+local DroneDriveBtn = Instance.new("TextButton", Main)
+DroneDriveBtn.Size = UDim2.new(0.9, 0, 0, 24)
+DroneDriveBtn.Position = UDim2.new(0.05, 0, 0, 142)
+DroneDriveBtn.Text = "4. DRONE THÁM HIỂM KẼ HỞ: TẮT"
+DroneDriveBtn.BackgroundColor3 = Color3.fromRGB(39, 174, 96)
+DroneDriveBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+DroneDriveBtn.Font = Enum.Font.SourceSansBold
+DroneDriveBtn.TextSize = 11
+Instance.new("UICorner", DroneDriveBtn).CornerRadius = UDim.new(0, 6)
+
+local EmergencyBtn = Instance.new("TextButton", Main)
+EmergencyBtn.Size = UDim2.new(0.9, 0, 0, 24)
+EmergencyBtn.Position = UDim2.new(0.05, 0, 0, 170)
+EmergencyBtn.Text = "CỨU HỘ CAMERA"
+EmergencyBtn.BackgroundColor3 = Color3.fromRGB(230, 126, 34)
+EmergencyBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+EmergencyBtn.Font = Enum.Font.SourceSansBold
+EmergencyBtn.TextSize = 11
+Instance.new("UICorner", EmergencyBtn).CornerRadius = UDim.new(0, 6)
+
+local B52Btn = Instance.new("TextButton", Main)
+B52Btn.Size = UDim2.new(0.9, 0, 0, 24)
+B52Btn.Position = UDim2.new(0.05, 0, 0, 198)
+B52Btn.Text = "KÍCH HOẠT B52 🚀"
+B52Btn.BackgroundColor3 = Color3.fromRGB(150, 0, 0)
+B52Btn.TextColor3 = Color3.fromRGB(255, 255, 0)
+B52Btn.Font = Enum.Font.SourceSansBold
+B52Btn.TextSize = 11
+Instance.new("UICorner", B52Btn).CornerRadius = UDim.new(0, 6)
+
+-- ==================== BẢNG DANH SÁCH MỤC TIÊU ====================
+local PlayerListFrame = Instance.new("Frame", ScreenGui)
+PlayerListFrame.Size = UDim2.new(0, 210, 0, 250)
+PlayerListFrame.Position = UDim2.new(0.15, 0, 0.3, 0)
+PlayerListFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
+PlayerListFrame.Active = true
+PlayerListFrame.Draggable = true
+PlayerListFrame.Visible = false
+Instance.new("UICorner", PlayerListFrame).CornerRadius = UDim.new(0, 8)
+
+local ListTitle = Instance.new("TextLabel", PlayerListFrame)
+ListTitle.Size = UDim2.new(1, 0, 0, 28)
+ListTitle.Text = "DANH SÁCH MỤC TIÊU SERVER"
+ListTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
+ListTitle.BackgroundColor3 = Color3.fromRGB(45, 45, 65)
+ListTitle.Font = Enum.Font.SourceSansBold
+ListTitle.TextSize = 11
+Instance.new("UICorner", ListTitle).CornerRadius = UDim.new(0, 8)
+
+local ScrollingPlayers = Instance.new("ScrollingFrame", PlayerListFrame)
+ScrollingPlayers.Size = UDim2.new(1, -10, 1, -40)
+ScrollingPlayers.Position = UDim2.new(0, 5, 0, 32)
+ScrollingPlayers.BackgroundTransparency = 1
+ScrollingPlayers.CanvasSize = UDim2.new(0, 0, 0, 0)
+ScrollingPlayers.ScrollBarThickness = 4
+
+local UIListLayout = Instance.new("UIListLayout", ScrollingPlayers)
+UIListLayout.Padding = UDim.new(0, 4)
+
+-- ==================== HUD OSD ====================
+local HUD = Instance.new("Frame", ScreenGui)
+HUD.Name = "HUD_Overlay"
+HUD.Size = UDim2.new(1, 0, 1, 0)
+HUD.BackgroundTransparency = 1
+HUD.Visible = false
+
+local CompassLabel = Instance.new("TextLabel", HUD)
+CompassLabel.Size = UDim2.new(0, 260, 0, 32)
+CompassLabel.Position = UDim2.new(0.5, -130, 0, 15)
+CompassLabel.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+CompassLabel.BackgroundTransparency = 0.5
+CompassLabel.TextColor3 = Color3.fromRGB(0, 255, 127)
+CompassLabel.Font = Enum.Font.Code
+CompassLabel.TextSize = 15
+CompassLabel.Text = "Compass: 000° N"
+Instance.new("UICorner", CompassLabel).CornerRadius = UDim.new(0, 6)
+
+local BatteryFrame = Instance.new("Frame", HUD)
+BatteryFrame.Size = UDim2.new(0, 180, 0, 65)
+BatteryFrame.Position = UDim2.new(0, 20, 1, -85)
+BatteryFrame.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+BatteryFrame.BackgroundTransparency = 0.5
+Instance.new("UICorner", BatteryFrame).CornerRadius = UDim.new(0, 6)
+
+local BatteryLabel = Instance.new("TextLabel", BatteryFrame)
+BatteryLabel.Size = UDim2.new(1, -10, 1, 0)
+BatteryLabel.Position = UDim2.new(0, 8, 0, 0)
+BatteryLabel.BackgroundTransparency = 1
+BatteryLabel.TextColor3 = Color3.fromRGB(0, 255, 127)
+BatteryLabel.Font = Enum.Font.Code
+BatteryLabel.TextSize = 13
+BatteryLabel.TextXAlignment = Enum.TextXAlignment.Left
+BatteryLabel.Text = "BAT: 100%\nVOLT: 16.8V\nPWR: 12.5A / 210W"
+
+local TelemetryLabel = Instance.new("TextLabel", HUD)
+TelemetryLabel.Size = UDim2.new(0, 420, 0, 32)
+TelemetryLabel.Position = UDim2.new(0.5, -210, 1, -45)
+TelemetryLabel.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+TelemetryLabel.BackgroundTransparency = 0.5
+TelemetryLabel.TextColor3 = Color3.fromRGB(0, 255, 127)
+TelemetryLabel.Font = Enum.Font.Code
+TelemetryLabel.TextSize = 12
+TelemetryLabel.Text = "POS: X:0 Y:0 Z:0 | MICRO-PENETRATE MODE"
+Instance.new("UICorner", TelemetryLabel).CornerRadius = UDim.new(0, 6)
+
+-- ==================== HÀM HỖ TRỢ CHUNG ====================
+local function getCompassDirection(deg)
+    local dirs = {"N (Bắc)", "NE (Đông Bắc)", "E (Đông)", "SE (Đông Nam)", "S (Nam)", "SW (Tây Nam)", "W (Tây)", "NW (Tây Bắc)"}
+    local index = math.floor((deg + 22.5) / 45) % 8 + 1
+    return dirs[index]
+end
+
+local function getObjectInCrosshair()
+    local cam = Workspace.CurrentCamera
+    if not cam then return nil end
+    local ray = cam:ViewportPointToRay(cam.ViewportSize.X / 2, cam.ViewportSize.Y / 2)
+    local params = RaycastParams.new()
+    params.FilterType = Enum.RaycastFilterType.Exclude
+    if LocalPlayer.Character then
+        params.FilterDescendantsInstances = {LocalPlayer.Character}
+    end
+    local result = Workspace:Raycast(ray.Origin, ray.Direction * 500, params)
+    if result and result.Instance then
+        local hit = result.Instance
+        if hit.Parent and hit.Parent:FindFirstChildOfClass("Humanoid") then
+            return hit.Parent:FindFirstChild("HumanoidRootPart") or hit
+        elseif not hit.Anchored then
+            return hit
+        end
+    end
+    return nil
+end
+
+local function restoreVisibility()
+    for _, part in ipairs(hiddenParts) do
+        if part and part.Parent then part.LocalTransparencyModifier = 0 end
+    end
+    hiddenParts = {}
+end
+
+local function restoreDroneVisibility()
+    for _, part in ipairs(droneHiddenParts) do
+        if part and part.Parent then part.LocalTransparencyModifier = 0 end
+    end
+    droneHiddenParts = {}
+    
+    for _, hl in ipairs(droneHighlights) do
+        if hl then hl:Destroy() end
+    end
+    droneHighlights = {}
+
+    for _, pLine in ipairs(dronePathParts) do
+        if pLine then pLine:Destroy() end
+    end
+    dronePathParts = {}
+end
+
+local function hardResetCamera()
+    isSteering = false
+    isDroneSteering = false
+    isDroneReturning = false
+    isPenetratingGap = false
+    currentEntranceTarget = nil
+    HUD.Visible = false
+    pcall(function() UserInputService.MouseBehavior = Enum.MouseBehavior.Default end)
+    
+    if renderConn then renderConn:Disconnect() renderConn = nil end
+    if touchConn then touchConn:Disconnect() touchConn = nil end
+    if inputConn then inputConn:Disconnect() end
+
+    restoreVisibility()
+    restoreDroneVisibility()
+
+    local cam = Workspace.CurrentCamera
+    local char = LocalPlayer.Character
+    if cam and char then
+        cam.CameraType = Enum.CameraType.Custom
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        local hrp = char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Head")
+        if hum then cam.CameraSubject = hum end
+        if hrp then cam.CFrame = CFrame.new(hrp.Position - (hrp.CFrame.LookVector * 12) + Vector3.new(0, 3, 0), hrp.Position) end
+    end
+
+    DriveBtn.Text = "2. LÁI FPV BOM: TẮT"
+    DriveBtn.BackgroundColor3 = Color3.fromRGB(231, 76, 60)
+    
+    DroneDriveBtn.Text = "4. DRONE THÁM HIỂM KẼ HỞ: TẮT"
+    DroneDriveBtn.BackgroundColor3 = Color3.fromRGB(39, 174, 96)
+end
+
+-- ==================== BẢN ĐỒ TỔNG KẾT ====================
+local function showMapSummaryGUI()
+    local MapGui = Instance.new("ScreenGui")
+    MapGui.Name = "FTAP_MapSummary_System"
+    local success, guiParent = pcall(function() return gethui() end)
+    MapGui.Parent = (success and guiParent) or CoreGui
+
+    local MainFrame = Instance.new("Frame", MapGui)
+    MainFrame.Size = UDim2.new(0, 420, 0, 380)
+    MainFrame.Position = UDim2.new(0.5, -210, 0.5, -190)
+    MainFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 30)
+    MainFrame.Active = true
+    MainFrame.Draggable = true
+    Instance.new("UICorner", MainFrame).CornerRadius = UDim.new(0, 10)
+
+    local Header = Instance.new("TextLabel", MainFrame)
+    Header.Size = UDim2.new(1, 0, 0, 40)
+    Header.Text = "🗺️ TỔNG KẾT THÁM HIỂM NGÓC NGÁCH (TỰ ĐỘNG TẮT SAU 3S)"
+    Header.TextColor3 = Color3.fromRGB(255, 255, 255)
+    Header.BackgroundColor3 = Color3.fromRGB(35, 35, 55)
+    Header.Font = Enum.Font.SourceSansBold
+    Header.TextSize = 11
+    Instance.new("UICorner", Header).CornerRadius = UDim.new(0, 10)
+
+    local MapViewBox = Instance.new("Frame", MainFrame)
+    MapViewBox.Size = UDim2.new(0.92, 0, 0, 180)
+    MapViewBox.Position = UDim2.new(0.04, 0, 0, 50)
+    MapViewBox.BackgroundColor3 = Color3.fromRGB(10, 20, 40)
+    MapViewBox.BorderColor3 = Color3.fromRGB(0, 150, 255)
+    MapViewBox.BorderSizePixel = 1
+    Instance.new("UICorner", MapViewBox).CornerRadius = UDim.new(0, 6)
+
+    local StatsLabel = Instance.new("TextLabel", MapViewBox)
+    StatsLabel.Size = UDim2.new(0.9, 0, 0, 120)
+    StatsLabel.Position = UDim2.new(0.05, 0, 0, 35)
+    StatsLabel.BackgroundTransparency = 1
+    StatsLabel.Font = Enum.Font.SourceSansBold
+    StatsLabel.TextSize = 12
+    StatsLabel.TextXAlignment = Enum.TextXAlignment.Left
+    StatsLabel.TextYAlignment = Enum.TextYAlignment.Top
+    StatsLabel.TextColor3 = Color3.fromRGB(220, 220, 220)
+    StatsLabel.Text = string.format(
+        "• Đã chui lủi xuyên qua mọi khe hở / lối vào bí mật:\n" ..
+        "• Tổng cấu trúc quét được: %d điểm\n" ..
+        "• Lối vào / Khe hở siêu nhỏ đã thám hiểm: %d lối\n" ..
+        "• Vật cản né tránh chính xác: %d điểm\n\n⚡ Dữ liệu mục tiêu ngầm đã truyền sang hệ thống oanh tạc!",
+        #scannedMapData.general,
+        #scannedMapData.entrances,
+        #scannedMapData.blocked
+    )
+
+    local LegendFrame = Instance.new("Frame", MainFrame)
+    LegendFrame.Size = UDim2.new(0.92, 0, 0, 75)
+    LegendFrame.Position = UDim2.new(0.04, 0, 0, 245)
+    LegendFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 45)
+    Instance.new("UICorner", LegendFrame).CornerRadius = UDim.new(0, 6)
+
+    local function createLegendRow(yPos, color, text)
+        local dot = Instance.new("Frame", LegendFrame)
+        dot.Size = UDim2.new(0, 14, 0, 14)
+        dot.Position = UDim2.new(0.03, 0, 0, yPos)
+        dot.BackgroundColor3 = color
+        Instance.new("UICorner", dot).CornerRadius = UDim.new(1, 0)
+
+        local lbl = Instance.new("TextLabel", LegendFrame)
+        lbl.Size = UDim2.new(0.8, 0, 0, 20)
+        lbl.Position = UDim2.new(0.12, 0, 0, yPos - 3)
+        lbl.BackgroundTransparency = 1
+        lbl.TextXAlignment = Enum.TextXAlignment.Left
+        lbl.TextColor3 = Color3.fromRGB(255, 255, 255)
+        lbl.Font = Enum.Font.SourceSans
+        lbl.TextSize = 12
+        lbl.Text = text
+    end
+
+    createLegendRow(8, Color3.fromRGB(231, 76, 60), "Màu đỏ: Vật cản / Vường tường chặn")
+    createLegendRow(28, Color3.fromRGB(46, 204, 113), "Màu xanh lá: Lối vào / Khe hở siêu nhỏ đã chui vào")
+    createLegendRow(48, Color3.fromRGB(0, 162, 255), "Màu xanh dương: Quỹ đạo quét toàn bản đồ")
+
+    task.delay(3, function()
+        if MapGui and MapGui.Parent then
+            MapGui:Destroy()
+            hardResetCamera()
+        end
+    end)
+end
+
+-- ==================== DRONE THÁM HIỂM KẼ HỞ & NGÓC NGÁCH ====================
+local function scanMapForSecrets(dronePos)
+    for _, hl in ipairs(droneHighlights) do
+        if hl then hl:Destroy() end
+    end
+    droneHighlights = {}
+
+    for _, obj in ipairs(Workspace:GetDescendants()) do
+        if obj:IsA("BasePart") then
+            local name = obj.Name:lower()
+            local isSecretOrEntrance = name:find("door") or name:find("secret") or name:find("base") or name:find("hidden") or name:find("entrance") or name:find("tunnel") or name:find("pipe") or (obj.Transparency > 0 and obj.Transparency < 1)
+            
+            local dist = (obj.Position - dronePos).Magnitude
+            if dist < 800 then 
+                table.insert(scannedMapData.general, obj.Position)
+
+                if isSecretOrEntrance then
+                    -- Tránh thêm trùng lặp quá gần
+                    local duplicate = false
+                    for _, pos in ipairs(scannedMapData.entrances) do
+                        if (pos - obj.Position).Magnitude < 15 then duplicate = true break end
+                    end
+                    
+                    if not duplicate then
+                        table.insert(scannedMapData.entrances, obj.Position)
+                    end
+
+                    local hl = Instance.new("Highlight", CoreGui)
+                    hl.Adornee = obj.Parent:IsA("Model") and obj.Parent or obj
+                    hl.FillColor = Color3.fromRGB(46, 204, 113)
+                    hl.OutlineColor = Color3.fromRGB(255, 255, 255)
+                    hl.FillTransparency = 0.3
+                    table.insert(droneHighlights, hl)
+                end
+            end
+        end
+    end
+end
+
+local function startDroneSteering()
+    if not selectedDrone or not selectedDrone.Parent then return hardResetCamera() end
+    
+    isDroneSteering = true
+    isDroneReturning = false
+    isPenetratingGap = false
+    currentEntranceTarget = nil
+    droneTimer = 0
+    droneStartPosition = selectedDrone.Position
+    
+    scannedMapData = { blocked = {}, entrances = {}, general = {} }
+    
+    HUD.Visible = true
+    DroneDriveBtn.Text = "4. DRONE THÁM HIỂM KẼ HỞ: BẬT"
+    DroneDriveBtn.BackgroundColor3 = Color3.fromRGB(0, 180, 216)
+
+    batteryPercent = 100
+    batteryVoltage = 16.8
+
+    local cam = Workspace.CurrentCamera
+    cam.CameraType = Enum.CameraType.Scriptable
+    
+    restoreDroneVisibility()
+    local rootModel = selectedDrone:FindFirstAncestorOfClass("Model") or selectedDrone.Parent
+    if rootModel then
+        for _, descendant in ipairs(rootModel:GetDescendants()) do
+            if descendant:IsA("BasePart") then table.insert(droneHiddenParts, descendant) end
+        end
+    elseif selectedDrone:IsA("BasePart") then
+        table.insert(droneHiddenParts, selectedDrone)
+    end
+
+    local size = selectedDrone.Size
+    local frontOffset = (size.Z / 2) + 1.2
+    local topOffset = (size.Y / 2) + 0.8
+
+    local scanTimer = 0
+    local pathTimer = 0
+    local lastPathPos = selectedDrone.Position
+
+    local orbitCenter = droneStartPosition + Vector3.new(0, 40, 0)
+    local orbitRadius = 450
+    local orbitAngularSpeed = 0.2
+
+    if renderConn then renderConn:Disconnect() end
+    renderConn = RunService.RenderStepped:Connect(function(dt)
+        if not isDroneSteering or not selectedDrone or not selectedDrone.Parent or not selectedDrone:IsDescendantOf(Workspace) then
+            hardResetCamera() return
+        end
+
+        droneTimer = droneTimer + dt
+
+        if droneTimer >= 220 and not isDroneReturning then
+            isDroneReturning = true
+        end
+
+        pathTimer = pathTimer + dt
+        if pathTimer >= 0.3 then
+            pathTimer = 0
+            local currentPos = selectedDrone.Position
+            if lastPathPos and (currentPos - lastPathPos).Magnitude > 6 then
+                local linePart = Instance.new("Part")
+                linePart.Name = "DronePathSegment"
+                linePart.Anchored = true
+                linePart.CanCollide = false
+                linePart.Material = Enum.Material.Neon
+                linePart.Color = Color3.fromRGB(0, 200, 255)
+                linePart.Transparency = 0.2
+                local dist = (currentPos - lastPathPos).Magnitude
+                linePart.Size = Vector3.new(0.3, 0.3, dist)
+                linePart.CFrame = CFrame.new(lastPathPos, currentPos) * CFrame.new(0, 0, -dist / 2)
+                linePart.Parent = Workspace
+                table.insert(dronePathParts, linePart)
+                lastPathPos = currentPos
+            end
+        end
+
+        local currentPos = selectedDrone.Position
+
+        if isDroneReturning then
+            local distToStart = (currentPos - droneStartPosition).Magnitude
+            if distToStart < 15 then
+                HUD.Visible = false
+                if renderConn then renderConn:Disconnect() renderConn = nil end
+                showMapSummaryGUI()
+                return
+            else
+                local returnDir = (droneStartPosition - currentPos).Unit
+                selectedDrone.Anchored = false
+                pcall(function() selectedDrone:SetNetworkOwner(LocalPlayer) end)
+                
+                local targetCF = CFrame.new(currentPos + returnDir * droneSpeed * dt, droneStartPosition)
+                selectedDrone.CFrame = selectedDrone.CFrame:Lerp(targetCF, math.clamp(dt * 6, 0, 1))
+                selectedDrone.AssemblyLinearVelocity = returnDir * droneSpeed
+                cam.CFrame = selectedDrone.CFrame * CFrame.new(0, topOffset, -frontOffset)
+                
+                BatteryLabel.Text = "DRONE: ĐANG VỀ CĂN CỨ"
+                BatteryLabel.TextColor3 = Color3.fromRGB(255, 165, 0)
+                TelemetryLabel.Text = string.format("RETURNING | DIST: %dM", math.floor(distToStart))
+                return
+            end
+        end
+
+        -- HỆ THỐNG QUÉT VÀ CHUI LỦI VÀO KHE HỎ / LỐI VÀO SIÊU NHỎ
+        local desiredPos = Vector3.zero
+        local currentActiveSpeed = droneSpeed
+
+        if not isPenetratingGap and #scannedMapData.entrances > 0 then
+            -- Tìm lối vào gần nhất chưa khám phá kỹ
+            for _, entPos in ipairs(scannedMapData.entrances) do
+                if (currentPos - entPos).Magnitude < 600 then
+                    currentEntranceTarget = entPos
+                    isPenetratingGap = true
+                    penetrationTimer = 0
+                    break
+                end
+            end
+        end
+
+        if isPenetratingGap and currentEntranceTarget then
+            penetrationTimer = penetrationTimer + dt
+            currentActiveSpeed = 90 -- Giảm tốc độ để kiểm soát tuyệt đối khi lách qua khe hẹp
+            desiredPos = currentEntranceTarget
+
+            -- Nếu đã tiến sát lối vào (hoặc xuyên qua bên trong được 4 giây), kết thúc thám hiểm kẽ hở đó và quay lại quét map
+            if (currentPos - currentEntranceTarget).Magnitude < 15 or penetrationTimer > 4.5 then
+                isPenetratingGap = false
+                currentEntranceTarget = nil
+            end
+        else
+            -- Quỹ đạo bay vòng tròn bao phủ toàn bộ map
+            local angle = droneTimer * orbitAngularSpeed
+            local targetX = orbitCenter.X + math.cos(angle) * orbitRadius
+            local targetZ = orbitCenter.Z + math.sin(angle) * orbitRadius
+            local targetY = orbitCenter.Y + math.sin(droneTimer * 0.35) * 60
+            desiredPos = Vector3.new(targetX, targetY, targetZ)
+        end
+
+        -- Vô hiệu hóa va chạm phần cứng của drone để drone có thể chui lọt qua mọi khe hở / ống nước / tường nhỏ nhất
+        for _, p in ipairs(selectedDrone:GetDescendants()) do
+            if p:IsA("BasePart") then p.CanCollide = false end
+        end
+        selectedDrone.CanCollide = false
+
+        -- Tự động né vật cản tĩnh
+        local rayParams = RaycastParams.new()
+        rayParams.FilterType = Enum.RaycastFilterType.Exclude
+        rayParams.FilterDescendantsInstances = {selectedDrone, LocalPlayer.Character}
+        
+        local lookDir = (desiredPos - currentPos).Unit
+        local rayResult = Workspace:Raycast(currentPos, lookDir * 100, rayParams)
+        if rayResult and not isPenetratingGap then
+            table.insert(scannedMapData.blocked, rayResult.Position)
+            desiredPos = desiredPos + Vector3.new(0, 90, 0)
+        end
+
+        selectedDrone.Anchored = false
+        pcall(function() selectedDrone:SetNetworkOwner(LocalPlayer) end)
+        
+        -- Di chuyển cực kỳ mượt mà, chính xác đến từng centimet
+        local targetCF = CFrame.new(currentPos, desiredPos)
+        selectedDrone.CFrame = selectedDrone.CFrame:Lerp(targetCF, math.clamp(dt * 6, 0, 1))
+        selectedDrone.AssemblyLinearVelocity = selectedDrone.CFrame.LookVector * currentActiveSpeed
+        
+        cam.CFrame = selectedDrone.CFrame * CFrame.new(0, topOffset, -frontOffset)
+        
+        for _, part in ipairs(droneHiddenParts) do
+            if part and part.Parent then part.LocalTransparencyModifier = 1 end
+        end
+
+        scanTimer = scanTimer + dt
+        if scanTimer >= 1.2 then
+            scanTimer = 0
+            scanMapForSecrets(selectedDrone.Position)
+        end
+
+        local heading = math.floor((360 - math.deg(math.atan2(-selectedDrone.CFrame.LookVector.X, -selectedDrone.CFrame.LookVector.Z))) % 360)
+        CompassLabel.Text = string.format("%03d° %s", heading, getCompassDirection(heading))
+
+        local modeText = isPenetratingGap and "⚡ ĐANG CHUI QUA KHE HỎ / LỐI VÀO BÍ MẬT" else "🔄 ĐANG QUÉT VÒNG TRÒN TOÀN MAP"
+        local remainingTime = math.max(0, 220 - math.floor(droneTimer))
+        BatteryLabel.Text = string.format("TIME: %ds | %d ENTRANCES FOUND", remainingTime, #scannedMapData.entrances)
+        BatteryLabel.TextColor3 = isPenetratingGap and Color3.fromRGB(255, 0, 0) or Color3.fromRGB(0, 180, 216)
+
+        TelemetryLabel.Text = string.format("%s | POS: X:%d Y:%d Z:%d", modeText, math.floor(currentPos.X), math.floor(currentPos.Y), math.floor(currentPos.Z))
+    end)
+end
+
+-- ==================== CẬP NHẬT DANH SÁCH MỤC TIÊU ====================
+local function updatePlayerListUI()
+    for _, child in ipairs(ScrollingPlayers:GetChildren()) do
+        if child:IsA("TextButton") then child:Destroy() end
+    end
+    
+    local count = 0
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= LocalPlayer then
+            count = count + 1
+            local pBtn = Instance.new("TextButton", ScrollingPlayers)
+            pBtn.Size = UDim2.new(1, 0, 0, 26)
+            pBtn.Font = Enum.Font.SourceSansBold
+            pBtn.TextSize = 12
+            pBtn.Text = p.Name
+            
+            local isSelected = false
+            for _, target in ipairs(selectedTargets) do
+                if target.player == p then isSelected = true break end
+            end
+            
+            if isSelected then
+                pBtn.BackgroundColor3 = Color3.fromRGB(46, 204, 113)
+                pBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+            else
+                pBtn.BackgroundColor3 = Color3.fromRGB(45, 45, 55)
+                pBtn.TextColor3 = Color3.fromRGB(200, 200, 200)
+            end
+            
+            Instance.new("UICorner", pBtn).CornerRadius = UDim.new(0, 4)
+            
+            pBtn.MouseButton1Click:Connect(function()
+                local char = p.Character
+                local hrp = char and char:FindFirstChild("HumanoidRootPart")
+                if hrp then
+                    local foundIdx = nil
+                    for idx, target in ipairs(selectedTargets) do
+                        if target.player == p then foundIdx = idx break end
+                    end
+                    
+                    if foundIdx then
+                        table.remove(selectedTargets, foundIdx)
+                        pBtn.BackgroundColor3 = Color3.fromRGB(45, 45, 55)
+                        pBtn.TextColor3 = Color3.fromRGB(200, 200, 200)
+                    else
+                        table.insert(selectedTargets, {player = p, hrp = hrp})
+                        pBtn.BackgroundColor3 = Color3.fromRGB(46, 204, 113)
+                        pBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+                    end
+                end
+            end)
+        end
+    end
+    ScrollingPlayers.CanvasSize = UDim2.new(0, 0, 0, count * 30)
+end
+
+-- ==================== CÁC NÚT BẤM CHÍNH ====================
+LockBtn.MouseButton1Click:Connect(function()
+    local obj = getObjectInCrosshair()
+    if obj then
+        local exists = false
+        for _, v in ipairs(selectedBombs) do if v == obj then exists = true break end end
+        if not exists then table.insert(selectedBombs, obj) end
+        targetPart = obj 
+        LockBtn.Text = "ĐÃ KHÓA BOM: " .. #selectedBombs
+        LockBtn.BackgroundColor3 = Color3.fromRGB(155, 89, 182)
+    else
+        selectedBombs = {}
+        targetPart = nil
+        LockBtn.Text = "1. CHỌN BOM (0)"
+        LockBtn.BackgroundColor3 = Color3.fromRGB(52, 152, 219)
+    end
+end)
+
+DroneSelectBtn.MouseButton1Click:Connect(function()
+    local obj = getObjectInCrosshair()
+    if obj then
+        selectedDrone = obj
+        DroneSelectBtn.Text = "ĐÃ CHỌN DRONE: " .. obj.Name
+        DroneSelectBtn.BackgroundColor3 = Color3.fromRGB(0, 119, 182)
+    else
+        selectedDrone = nil
+        DroneSelectBtn.Text = "3. CHỌN DRONE (TRỐNG)"
+        DroneSelectBtn.BackgroundColor3 = Color3.fromRGB(41, 128, 185)
+    end
+end)
+
+OpenListBtn.MouseButton1Click:Connect(function()
+    PlayerListFrame.Visible = not PlayerListFrame.Visible
+    if PlayerListFrame.Visible then
+        updatePlayerListUI()
+    end
+end)
+
+DriveBtn.MouseButton1Click:Connect(function()
+    if isSteering then hardResetCamera()
+    else if targetPart then startSteering() end end
+end)
+
+DroneDriveBtn.MouseButton1Click:Connect(function()
+    if isDroneSteering then hardResetCamera()
+    else if selectedDrone then startDroneSteering() end end
+end)
+
+EmergencyBtn.MouseButton1Click:Connect(function() hardResetCamera() end)
+
+-- ==================== HỆ THỐNG B52 ====================
+local b52Active = false
+local b52Markers = {}
+local blinkConn = nil
+local b52MoveConn = nil
+
+local function triggerB52Action()
+    if b52Active then return end
+    b52Active = true
+    
+    B52Btn.Text = "⚠ Đang oanh tạc... ⚠"
+    B52Btn.BackgroundColor3 = Color3.fromRGB(241, 196, 15)
+    B52Btn.TextColor3 = Color3.fromRGB(200, 0, 0)
+    
+    if isSteering or isDroneSteering then hardResetCamera() end
+    
+    local cam = Workspace.CurrentCamera
+    cam.CameraType = Enum.CameraType.Scriptable
+    local char = LocalPlayer.Character
+    local root = char and char:FindFirstChild("HumanoidRootPart")
+    local startPos = root and root.Position or Vector3.new(0, 0, 0)
+    
+    local skyPos = startPos + Vector3.new(0, 3500, 0)
+    cam.CFrame = CFrame.new(skyPos, skyPos + Vector3.new(0, -1, -0.01))
+    
+    local rawTargets = {}
+    if #selectedTargets > 0 then
+        for _, item in ipairs(selectedTargets) do
+            if item.hrp and item.hrp.Parent then 
+                table.insert(rawTargets, item.hrp) 
+            end
+        end
+    end
+    
+    if #rawTargets == 0 then
+        for _, p in ipairs(Players:GetPlayers()) do
+            if p ~= LocalPlayer and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+                table.insert(rawTargets, p.Character.HumanoidRootPart)
+            end
+        end
+    end
+
+    local targetsHRP = {}
+    for _, hrp in ipairs(rawTargets) do
+        if hrp and hrp.Parent then
+            if not isPositionBlocked(hrp.Position) then
+                table.insert(targetsHRP, hrp)
+            end
+        end
+    end
+    
+    if #targetsHRP == 0 then
+        targetsHRP = rawTargets
+    end
+    
+    local nameLabelsList = {}
+    for _, hrp in ipairs(targetsHRP) do
+        local model = hrp.Parent
+        local p = Players:GetPlayerFromCharacter(model)
+        local targetName = p and p.Name or model.Name
+        
+        if model then
+            local bg = Instance.new("BillboardGui", CoreGui)
+            bg.Adornee = hrp
+            bg.Size = UDim2.new(0, 75, 0, 18)
+            bg.StudsOffset = Vector3.new(0, 3.2, 0)
+            bg.AlwaysOnTop = true
+            
+            local nameLabel = Instance.new("TextLabel", bg)
+            nameLabel.Size = UDim2.new(1, 0, 1, 0)
+            nameLabel.BackgroundColor3 = Color3.fromRGB(200, 0, 0)
+            nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+            nameLabel.Font = Enum.Font.SourceSansBold
+            nameLabel.TextSize = 10
+            nameLabel.Text = "🎯 " .. targetName
+            Instance.new("UICorner", nameLabel).CornerRadius = UDim.new(0, 4)
+            
+            table.insert(b52Markers, bg)
+            table.insert(nameLabelsList, nameLabel)
+            
+            local hl = Instance.new("Highlight", CoreGui)
+            hl.Adornee = model
+            hl.FillColor = Color3.fromRGB(255, 0, 0)
+            hl.OutlineColor = Color3.fromRGB(255, 0, 0)
+            hl.FillTransparency = 0.5
+            table.insert(b52Markers, hl)
+        end
+    end
+    
+    if blinkConn then blinkConn:Disconnect() end
+    blinkConn = RunService.RenderStepped:Connect(function()
+        local alpha = (math.sin(tick() * 16) + 1) / 2
+        for _, label in ipairs(nameLabelsList) do
+            if label and label.Parent then
+                label.BackgroundTransparency = 0.1 + (alpha * 0.5)
+            end
+        end
+    end)
+    
+    local activeBombs = {}
+    if #targetsHRP > 0 and #selectedBombs > 0 then
+        for i, bomb in ipairs(selectedBombs) do
+            if bomb and bomb.Parent then
+                local targetIndex = ((i - 1) % #targetsHRP) + 1
+                local assignedTarget = targetsHRP[targetIndex]
+                
+                if assignedTarget and assignedTarget.Parent then
+                    bomb.Anchored = false
+                    pcall(function() bomb:SetNetworkOwner(LocalPlayer) end)
+                    
+                    local dropPos = assignedTarget.Position + Vector3.new(math.random(-100, 100), 2500, math.random(-100, 100))
+                    bomb.CFrame = CFrame.new(dropPos)
+                    
+                    local skyPart = Instance.new("Part")
+                    skyPart.Size = Vector3.new(1, 1, 1)
+                    skyPart.Position = dropPos
+                    skyPart.Anchored = true
+                    skyPart.CanCollide = false
+                    skyPart.Transparency = 1
+                    skyPart.Parent = Workspace
+                    table.insert(b52Markers, skyPart)
+                    
+                    local skyAtt = Instance.new("Attachment", skyPart)
+                    local bombAtt = Instance.new("Attachment", bomb)
+                    
+                    local redBeam = Instance.new("Beam", bomb)
+                    redBeam.Attachment0 = skyAtt
+                    redBeam.Attachment1 = bombAtt
+                    redBeam.Color = ColorSequence.new(Color3.fromRGB(255, 0, 0))
+                    redBeam.Width0 = 3.0
+                    redBeam.Width1 = 2.0
+                    redBeam.FaceCamera = true
+                    redBeam.LightEmission = 1
+                    redBeam.Transparency = NumberSequence.new(0.05)
+                    table.insert(b52Markers, redBeam)
+                    
+                    table.insert(activeBombs, {
+                        bomb = bomb, 
+                        target = assignedTarget
+                    })
+                end
+            end
+        end
+    end
+    
+    local startTime = tick()
+    
+    if b52MoveConn then b52MoveConn:Disconnect() end
+    b52MoveConn = RunService.Heartbeat:Connect(function(dt)
+        if not b52Active then return end
+        local currentTime = tick()
+        
+        pcall(function()
+            for index = #activeBombs, 1, -1 do
+                local item = activeBombs[index]
+                local bomb = item.bomb
+                local target = item.target
+                
+                local isTargetValid = true
+                if not target or not target.Parent then
+                    isTargetValid = false
+                end
+                
+                if bomb and bomb.Parent and isTargetValid then
+                    for _, p in ipairs(bomb:GetDescendants()) do
+                        if p:IsA("BasePart") then p.CanCollide = false end
+                    end
+                    bomb.CanCollide = false
+
+                    local targetPos = target.Position
+                    local currentPos = bomb.Position
+                    local distanceToTarget = (currentPos - targetPos).Magnitude
+                    
+                    if distanceToTarget < 20 then
+                        bomb.AssemblyLinearVelocity = Vector3.zero
+                        table.remove(activeBombs, index)
+                        bomb:Destroy()
+                    else
+                        local direction = (targetPos - currentPos).Unit
+                        local flightSpeed = 350
+                        local nextPos = currentPos + (direction * flightSpeed * dt)
+                        bomb.CFrame = CFrame.new(nextPos, targetPos) * CFrame.Angles(math.rad(90), 0, 0)
+                        bomb.AssemblyLinearVelocity = direction * flightSpeed
+                    end
+                else
+                    table.remove(activeBombs, index)
+                end
+            end
+        end)
+        
+        if #activeBombs == 0 or (currentTime - startTime > 25) then
+            b52Active = false
+            if blinkConn then blinkConn:Disconnect() blinkConn = nil end
+            if b52MoveConn then b52MoveConn:Disconnect() b52MoveConn = nil end
+            
+            B52Btn.Text = "KÍCH HOẠT B52 🚀"
+            B52Btn.BackgroundColor3 = Color3.fromRGB(150, 0, 0)
+            B52Btn.TextColor3 = Color3.fromRGB(255, 255, 0)
+            
+            for _, m in ipairs(b52Markers) do
+                if m and m.Parent then m:Destroy() end
+            end
+            b52Markers = {}
+            nameLabelsList = {}
+            
+            selectedBombs = {}
+            targetPart = nil
+            LockBtn.Text = "1. CHỌN BOM (0)"
+            LockBtn.BackgroundColor3 = Color3.fromRGB(52, 152, 219)
+            
+            hardResetCamera()
+        end
+    end)
+end
+
+B52Btn.MouseButton1Click:Connect(function()
+    triggerB52Action()
+end)
+
+-- ==================== HỆ THỐNG DEAD HAND ====================
+local DeadHandGui = Instance.new("ScreenGui")
+DeadHandGui.Name = "DeadHand_System"
+local successDH, guiParentDH = pcall(function() return gethui() end)
+DeadHandGui.Parent = (successDH and guiParentDH) or CoreGui
+DeadHandGui.Enabled = false
+
+local DHFrame = Instance.new("Frame", DeadHandGui)
+DHFrame.Size = UDim2.new(0, 320, 0, 140)
+DHFrame.Position = UDim2.new(0.5, -160, 0.2, 0)
+DHFrame.BackgroundColor3 = Color3.fromRGB(30, 0, 0)
+DHFrame.BorderSizePixel = 2
+DHFrame.BorderColor3 = Color3.fromRGB(255, 0, 0)
+Instance.new("UICorner", DHFrame).CornerRadius = UDim.new(0, 8)
+
+local DHTitle = Instance.new("TextLabel", DHFrame)
+DHTitle.Size = UDim2.new(1, 0, 0, 35)
+DHTitle.Text = "⚠️ DEAD HAND: PHẢN CÔNG KẺ ĐỊCH! ⚠️"
+DHTitle.TextColor3 = Color3.fromRGB(255, 255, 0)
+DHTitle.BackgroundColor3 = Color3.fromRGB(100, 0, 0)
+DHTitle.Font = Enum.Font.SourceSansBold
+DHTitle.TextSize = 13
+Instance.new("UICorner", DHTitle).CornerRadius = UDim.new(0, 8)
+
+local DHDesc = Instance.new("TextLabel", DHFrame)
+DHDesc.Size = UDim2.new(1, -20, 0, 45)
+DHDesc.Position = UDim2.new(0, 10, 0, 40)
+DHDesc.BackgroundTransparency = 1
+DHDesc.Text = "Phát hiện bị tấn công!\nTự động oanh tạc trả thù sau: 10s"
+DHDesc.TextColor3 = Color3.fromRGB(255, 255, 255)
+DHDesc.Font = Enum.Font.SourceSans
+DHDesc.TextSize = 13
+
+local YesBtn = Instance.new("TextButton", DHFrame)
+YesBtn.Size = UDim2.new(0.45, 0, 0, 30)
+YesBtn.Position = UDim2.new(0.04, 0, 1, -38)
+YesBtn.Text = "PHẢN CÔNG (OK)"
+YesBtn.BackgroundColor3 = Color3.fromRGB(200, 0, 0)
+YesBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+YesBtn.Font = Enum.Font.SourceSansBold
+YesBtn.TextSize = 12
+Instance.new("UICorner", YesBtn).CornerRadius = UDim.new(0, 6)
+
+local NoBtn = Instance.new("TextButton", DHFrame)
+NoBtn.Size = UDim2.new(0.45, 0, 0, 30)
+NoBtn.Position = UDim2.new(0.51, 0, 1, -38)
+NoBtn.Text = "NGỦ ĐÔNG (HỦY)"
+NoBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+NoBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+NoBtn.Font = Enum.Font.SourceSansBold
+NoBtn.TextSize = 12
+Instance.new("UICorner", NoBtn).CornerRadius = UDim.new(0, 6)
+
+local isDeadHandTriggered = false
+local deadHandConn = nil
+
+local function setupAttackerTracking(char)
+    local hrp = char:WaitForChild("HumanoidRootPart", 5)
+    if not hrp then return end
+    
+    for _, part in ipairs(char:GetDescendants()) do
+        if part:IsA("BasePart") then
+            part.Touched:Connect(function(hit)
+                local enemyChar = hit:FindFirstAncestorOfClass("Model")
+                if enemyChar and enemyChar ~= char then
+                    local enemyPlayer = Players:GetPlayerFromCharacter(enemyChar)
+                    if enemyPlayer then
+                        lastAttacker = enemyPlayer
+                    end
+                end
+            end)
+        end
+    end
+end
+
+if LocalPlayer.Character then
+    setupAttackerTracking(LocalPlayer.Character)
+end
+LocalPlayer.CharacterAdded:Connect(setupAttackerTracking)
+
+local function executeDeadHandAirstrike()
+    DeadHandGui.Enabled = false
+    isDeadHandTriggered = false
+    if deadHandConn then deadHandConn:Disconnect() deadHandConn = nil end
+    
+    local dhBombs = {}
+    if #selectedBombs > 0 then
+        for _, b in ipairs(selectedBombs) do table.insert(dhBombs, b) end
+        selectedBombs = {}
+    else
+        local char = LocalPlayer.Character
+        local hrp = char and char:FindFirstChild("HumanoidRootPart")
+        if hrp then
+            for _, obj in ipairs(Workspace:GetDescendants()) do
+                if obj:IsA("BasePart") and not obj.Anchored and (obj.Position - hrp.Position).Magnitude < 350 then
+                    table.insert(dhBombs, obj)
+                    if #dhBombs >= 6 then break end
+                end
+            end
+        end
+    end
+    
+    if #dhBombs == 0 then return end
+    
+    local targetsHRP = {}
+    if lastAttacker and lastAttacker.Character and lastAttacker.Character:FindFirstChild("HumanoidRootPart") then
+        local attackerHrp = lastAttacker.Character.HumanoidRootPart
+        if not isPositionBlocked(attackerHrp.Position) then
+            table.insert(targetsHRP, attackerHrp)
+        end
+    end
+    
+    if #targetsHRP == 0 then
+        local char = LocalPlayer.Character
+        local hrp = char and char:FindFirstChild("HumanoidRootPart")
+        local closestDist = math.huge
+        local closestHrp = nil
+        
+        for _, p in ipairs(Players:GetPlayers()) do
+            if p ~= LocalPlayer and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+                local candidateHrp = p.Character.HumanoidRootPart
+                if hrp and not isPositionBlocked(candidateHrp.Position) then
+                    local dist = (candidateHrp.Position - hrp.Position).Magnitude
+                    if dist < closestDist then
+                        closestDist = dist
+                        closestHrp = candidateHrp
+                    end
+                end
+            end
+        end
+        if closestHrp then
+            table.insert(targetsHRP, closestHrp)
+        end
+    end
+    
+    if #targetsHRP == 0 then return end
+    
+    local dhMarkers = {}
+    local activeBombs = {}
+    
+    for i, bomb in ipairs(dhBombs) do
+        if bomb and bomb.Parent then
+            local targetIndex = ((i - 1) % #targetsHRP) + 1
+            local assignedTarget = targetsHRP[targetIndex]
+            
+            if assignedTarget and assignedTarget.Parent then
+                bomb.Anchored = false
+                pcall(function() bomb:SetNetworkOwner(LocalPlayer) end)
+                
+                local dropPos = assignedTarget.Position + Vector3.new(math.random(-40, 40), 2500, math.random(-40, 40))
+                bomb.CFrame = CFrame.new(dropPos)
+                
+                local skyPart = Instance.new("Part")
+                skyPart.Size = Vector3.new(1, 1, 1)
+                skyPart.Position = dropPos
+                skyPart.Anchored = true
+                skyPart.CanCollide = false
+                skyPart.Transparency = 1
+                skyPart.Parent = Workspace
+                table.insert(dhMarkers, skyPart)
+                
+                local skyAtt = Instance.new("Attachment", skyPart)
+                local bombAtt = Instance.new("Attachment", bomb)
+                
+                local redBeam = Instance.new("Beam", bomb)
+                redBeam.Attachment0 = skyAtt
+                redBeam.Attachment1 = bombAtt
+                redBeam.Color = ColorSequence.new(Color3.fromRGB(255, 0, 0))
+                redBeam.Width0 = 3.0
+                redBeam.Width1 = 2.0
+                redBeam.FaceCamera = true
+                redBeam.LightEmission = 1
+                redBeam.Transparency = NumberSequence.new(0.05)
+                table.insert(dhMarkers, redBeam)
+                
+                table.insert(activeBombs, {
+                    bomb = bomb, 
+                    target = assignedTarget
+                })
+            end
+        end
+    end
+    
+    local dhMoveConn
+    dhMoveConn = RunService.Heartbeat:Connect(function(dt)
+        pcall(function()
+            for index = #activeBombs, 1, -1 do
+                local item = activeBombs[index]
+                local bomb = item.bomb
+                local target = item.target
+                
+                if bomb and bomb.Parent and target and target.Parent then
+                    for _, p in ipairs(bomb:GetDescendants()) do
+                        if p:IsA("BasePart") then p.CanCollide = false end
+                    end
+                    bomb.CanCollide = false
+
+                    local targetPos = target.Position
+                    local currentPos = bomb.Position
+                    local distanceToTarget = (currentPos - targetPos).Magnitude
+                    
+                    if distanceToTarget < 20 then
+                        bomb.AssemblyLinearVelocity = Vector3.zero
+                        table.remove(activeBombs, index)
+                        bomb:Destroy()
+                    else
+                        local direction = (targetPos - currentPos).Unit
+                        local flightSpeed = 350
+                        local nextPos = currentPos + (direction * flightSpeed * dt)
+                        bomb.CFrame = CFrame.new(nextPos, targetPos) * CFrame.Angles(math.rad(90), 0, 0)
+                        bomb.AssemblyLinearVelocity = direction * flightSpeed
+                    end
+                else
+                    table.remove(activeBombs, index)
+                end
+            end
+        end)
+        
+        if #activeBombs == 0 then
+            if dhMoveConn then dhMoveConn:Disconnect() dhMoveConn = nil end
+            for _, m in ipairs(dhMarkers) do
+                if m and m.Parent then m:Destroy() end
+            end
+        end
+    end)
+end
+
+RunService.Heartbeat:Connect(function()
+    local char = LocalPlayer.Character
+    if not char then return end
+    
+    local humanoid = char:FindFirstChildOfClass("Humanoid")
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    if not humanoid or not hrp then return end
+    
+    local isHurt = (humanoid.Health > 0 and humanoid.Health <= (humanoid.MaxHealth * 0.25)) or humanoid.Health <= 0
+    local flightSpeed = hrp.AssemblyLinearVelocity.Magnitude
+    local isBeingThrown = (flightSpeed > 50) and not isSteering and not isDroneSteering
+    
+    if (isHurt or isBeingThrown) and not isDeadHandTriggered then
+        isDeadHandTriggered = true
+        DeadHandGui.Enabled = true
+        
+        local timerTick = tick()
+        if deadHandConn then deadHandConn:Disconnect() end
+        
+        deadHandConn = RunService.Heartbeat:Connect(function()
+            local elapsed = math.floor(tick() - timerTick)
+            local remaining = 10 - elapsed
+            
+            if remaining > 0 then
+                DHDesc.Text = string.format("Phát hiện bị tấn công!\nTự động oanh tạc trả thù sau: %ds", remaining)
+            else
+                if deadHandConn then deadHandConn:Disconnect() deadHandConn = nil end
+                executeDeadHandAirstrike()
+            end
+        end)
+    end
+end)
+
+YesBtn.MouseButton1Click:Connect(function()
+    executeDeadHandAirstrike()
+end)
+
+NoBtn.MouseButton1Click:Connect(function()
+    DeadHandGui.Enabled = false
+    isDeadHandTriggered = false
+    if deadHandConn then deadHandConn:Disconnect() deadHandConn = nil end
+    lastAttacker = nil
+end)
