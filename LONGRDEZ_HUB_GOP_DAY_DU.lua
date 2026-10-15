@@ -130,6 +130,8 @@ local function dumpGuis()
 	end
 end
 
+local FOV0 = (workspace.CurrentCamera and workspace.CurrentCamera.FieldOfView) or 70
+
 local old = parent:FindFirstChild("LongrdezKeyUI")
 if old then old:Destroy() end
 local gui = mk("ScreenGui", { Name = "LongrdezKeyUI", ResetOnSpawn = false, IgnoreGuiInset = true, DisplayOrder = MAXORDER }, parent)
@@ -669,15 +671,7 @@ local function say(t, ok)
 end
 
 -- ======================================================================
--- KHỐI B: CINEMATIC "VÀO SCRIPT CHÍNH" (~5 giây)
--- Cửa sổ co lại -> xoáy năng lượng -> cổng 4 vòng -> ACCESS GRANTED đập xuống
--- -> BÙNG NỔ (sóng, tia, mảnh vỡ, rung, zoom) -> cột sáng -> tan vào game
--- ======================================================================
--- ======================================================================
--- KHỐI B (NÂNG CẤP): CINEMATIC "VÀO SCRIPT CHÍNH" ~5.6 giây
--- Thay TOÀN BỘ hàm `local function epicEnter() ... end` cũ bằng khối này.
--- Dùng lại các biến sẵn có: mk, tw, loop, corner, gui, main, VIOLET, PINK, RunService
---
+-- KHỐI B: CINEMATIC "VÀO SCRIPT CHÍNH" ~5.6 giây (chạy sau khi tải xong script chính)
 -- 0.0s  cửa sổ co lại + dải đen điện ảnh + camera lùi
 -- 0.3s  HYPERSPACE: tia sáng phóng ra từ tâm + vòng đường hầm
 -- 1.3s  lõi năng lượng + 3 vòng con quay + 10 hạt quỹ đạo
@@ -707,6 +701,7 @@ local function epicEnter()
 	local blur
 	pcall(function()
 		blur = Instance.new("BlurEffect")
+		blur.Name = "LRZBlur"
 		blur.Size = 0
 		blur.Parent = game:GetService("Lighting")
 	end)
@@ -716,7 +711,7 @@ local function epicEnter()
 	end
 
 	-- Lớp phủ
-	local ov = mk("Frame", { Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, BorderSizePixel = 0, ZIndex = 90, Active = true }, gui)
+	local ov = mk("Frame", { Name = "LRZEpic", Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, BorderSizePixel = 0, ZIndex = 90, Active = true }, gui)
 	local bg = mk("Frame", { Size = UDim2.fromScale(1, 1), BackgroundColor3 = Color3.fromRGB(3, 1, 9), BackgroundTransparency = 1, BorderSizePixel = 0, ZIndex = 90 }, ov)
 	local world = mk("Frame", { Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, BorderSizePixel = 0, ZIndex = 91 }, ov)
 	local ctr = mk("Frame", { Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromOffset(0, 0), BackgroundTransparency = 1, ZIndex = 92 }, world)
@@ -1302,6 +1297,7 @@ local function playIntro()
 	local blur
 	pcall(function()
 		blur = Instance.new("BlurEffect")
+		blur.Name = "LRZBlur"
 		blur.Size = 0
 		blur.Parent = game:GetService("Lighting")
 	end)
@@ -1316,7 +1312,7 @@ local function playIntro()
 	local function kick(a) shakeAmt = math.max(shakeAmt, a) end
 
 	local intro = mk("Frame", {
-		Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, BorderSizePixel = 0, ZIndex = 50, Active = true,
+		Name = "LRZIntro", Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, BorderSizePixel = 0, ZIndex = 50, Active = true,
 	}, gui)
 	intro.InputBegan:Connect(function(i)
 		if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then skipIntro = true end
@@ -2166,7 +2162,7 @@ epicEnter = function()
 		local GOLD = Color3.fromRGB(255, 196, 90)
 		local pi, rnd = math.pi, math.random
 		local alive = true
-		local fx = mk("Frame", { Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, BorderSizePixel = 0, ZIndex = 140 }, gui)
+		local fx = mk("Frame", { Name = "LRZEpicFx", Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, BorderSizePixel = 0, ZIndex = 140 }, gui)
 		local c = mk("Frame", { Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromOffset(0, 0), BackgroundTransparency = 1, ZIndex = 141 }, fx)
 		mk("UIScale", { Scale = S }, c)
 		local function later(t, fn)
@@ -2295,13 +2291,130 @@ epicEnter = function()
 	_epicBase()
 end
 
+-- ===== Dọn dẹp khi một hiệu ứng bị lỗi giữa chừng (không để lớp phủ chặn màn hình) =====
+local function cleanupFx()
+	for _, n in ipairs({ "LRZIntro", "LRZEpic", "LRZEpicFx" }) do
+		local o = gui:FindFirstChild(n)
+		while o do
+			o:Destroy()
+			o = gui:FindFirstChild(n)
+		end
+	end
+	pcall(function()
+		for _, c in ipairs(game:GetService("Lighting"):GetChildren()) do
+			if c.Name == "LRZBlur" then c:Destroy() end
+		end
+	end)
+	pcall(function()
+		if workspace.CurrentCamera then workspace.CurrentCamera.FieldOfView = FOV0 end
+	end)
+end
+
+-- ======================================================================
+-- PHẦN BỊ THIẾU KHI GỘP V2 (đã khôi phục): tải script chính + 2 nút + kéo thả cửa sổ
+-- ======================================================================
+local function download()
+	-- bắt đầu tải NGAY, chạy song song với hiệu ứng ổ khóa mở (đỡ phải chờ)
+	local src, err, fin
+	task.spawn(function()
+		local ok, r = pcall(function() return game:HttpGet(MAIN_URL) end)
+		if ok then src = r else err = r end
+		fin = true
+	end)
+	unlockAnim()
+	show(bootPage)
+	logLines = {}
+	render()
+	setProgress(0, "MỞ KHÓA")
+	typeLine("Key hợp lệ - mở khóa thành công!", GREEN)
+	setProgress(25, "ĐÃ MỞ KHÓA")
+	typeLine("Đang tải script chính từ server...", SOFT)
+	setProgress(50, "ĐANG TẢI")
+	local p = 50
+	while not fin do
+		p = math.min(90, p + 1)
+		setProgress(p, "ĐANG TẢI")
+		task.wait(0.08)
+	end
+	if not src then
+		typeLine("Lỗi tải: " .. tostring(err):sub(1, 38), RED)
+		setProgress(0, "LỖI")
+		task.wait(2)
+		show(keyPage)
+		return
+	end
+	typeLine("Tải xong! Đang khởi chạy...", GREEN)
+	setProgress(100, "HOÀN TẤT")
+	task.wait(0.4)
+
+	-- cinematic bùng nổ ~5.6s; nếu hiệu ứng lỗi thì dùng sóng nổ đơn giản, KHÔNG để chặn việc vào script
+	local okE, errE = pcall(epicEnter)
+	if not okE then
+		warn("[LONGRDEZ] Lỗi cinematic: " .. tostring(errE))
+		cleanupFx()
+		pcall(burst)
+		task.wait(0.9)
+	end
+	pcall(function() gui:Destroy() end)
+
+	local f, e = loadstring(src)
+	if not f then warn("[LONGRDEZ] " .. tostring(e)) return end
+	local ok, e2 = pcall(f)
+	if not ok then warn("[LONGRDEZ] Lỗi chạy script chính: " .. tostring(e2)) end
+end
+
+getBtn.MouseButton1Click:Connect(function()
+	if setclipboard then
+		setclipboard(WEB_URL .. "?hwid=" .. HW)
+		say("Đã copy link web! Dán vào trình duyệt để lấy key.", true)
+	else
+		say("Không copy được. Vào web và nhập ID: " .. HW, nil)
+	end
+end)
+
+local busy = false
+chkBtn.MouseButton1Click:Connect(function()
+	if busy then return end
+	local ok, msg = checkKey(box.Text)
+	if not ok then say(msg, false) return end
+	busy = true
+	if writefile then pcall(writefile, KEY_FILE, (box.Text:upper():gsub("%s", ""))) end
+	download()
+	busy = false
+end)
+
+-- Kéo thả cửa sổ
+local dragging, startPos, startInput
+main.InputBegan:Connect(function(i)
+	if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+		dragging, startPos, startInput = true, main.Position, i.Position
+		i.Changed:Connect(function() if i.UserInputState == Enum.UserInputState.End then dragging = false end end)
+	end
+end)
+UIS.InputChanged:Connect(function(i)
+	if dragging and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then
+		local d = i.Position - startInput
+		main.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + d.X, startPos.Y.Scale, startPos.Y.Offset + d.Y)
+	end
+end)
+
 -- ===== Chuỗi khởi động =====
 task.spawn(function()
-	playIntro()
-	makeLogo()
+	local okI, errI = pcall(playIntro)
+	if not okI then
+		warn("[LONGRDEZ] Lỗi intro: " .. tostring(errI))
+		cleanupFx()
+	end
+	pcall(makeLogo)
 	main.Visible = true
-	dumpGuis()
-	menuReveal()
+	pcall(dumpGuis)
+	local okM, errM = pcall(menuReveal)
+	if not okM then
+		warn("[LONGRDEZ] Lỗi menuReveal: " .. tostring(errM))
+		cleanupFx()
+		main.Size = UDim2.fromOffset(360, 256)
+		main.GroupTransparency = 0
+	end
 	task.wait(1.2)
 	show(bootPage)
 	local saved = readSaved()
