@@ -1,0 +1,611 @@
+-- ==========================================================
+-- SCRIPT MASTER FTAP - TACTICAL TERMINAL (FULL INTEGRATED VERSION)
+-- ==========================================================
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
+local CoreGui = game:GetService("CoreGui")
+local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+local Lighting = game:GetService("Lighting")
+
+local LocalPlayer = Players.LocalPlayer
+
+-- ==================== CẤU HÌNH BIẾN HỆ THỐNG ====================
+local targetPart = nil
+local selectedBombs = {}   
+local selectedTargets = {} 
+local isSteering = false
+local antiMissileActive = false
+
+-- Cấu hình Bàn tay tử thần (Dead Hand) & Auto Spam
+local deadHandActive = false
+local promptActive = false
+local promptCancelled = false
+local healthConn = nil
+local autoScanSpammed = true
+
+-- Cấu hình B52
+local b52Active = false
+
+-- Cấu hình Tầm nhìn NVG/FLIR
+local visionMode = 0 -- 0: Normal, 1: NVG, 2: FLIR
+local ccEffect = Lighting:FindFirstChild("TacticalVision_FTAP")
+if not ccEffect then
+    ccEffect = Instance.new("ColorCorrectionEffect")
+    ccEffect.Name = "TacticalVision_FTAP"
+    ccEffect.Parent = Lighting
+end
+ccEffect.Enabled = false
+local flirHighlights = {}
+
+-- Cấu hình Cài đặt & Ngôn ngữ
+local currentLang = "VN"
+local animEnabled = true
+local menuVisible = true
+
+local Strings = {
+    VN = {
+        Title = "[ TRUNG TÂM TÁC CHIẾN - LONG ]",
+        Lock = "[KHÓA] MỤC TIÊU: ",
+        TargetList = "[DỮ LIỆU] LƯỚI MỤC TIÊU",
+        DroneOff = "[DRONE] FPV: TẮT",
+        DroneOn = "[DRONE] FPV: BẬT",
+        Reset = "[HỆ THỐNG] ĐẶT LẠI",
+        Strike = "[TẤN CÔNG] KHÔNG KÍCH B52",
+        StrikeActive = "[TẤN CÔNG] ĐANG OẠCH...",
+        DefenseOff = "[PHÒNG THỦ] CIWS: TẮT",
+        DefenseOn = "[PHÒNG THỦ] CIWS: BẬT",
+        DeadHandOff = "[PHẢN CÔNG] BÀN TAY TỬ THẦN: TẮT",
+        DeadHandOn = "[PHẢN CÔNG] BÀN TAY TỬ THẦN: BẬT",
+        AutoSpamOff = "[ĐỒ SPAM] TỰ LẤY: TẮT",
+        AutoSpamOn = "[ĐỒ SPAM] TỰ LẤY: BẬT",
+        VisNormal = "[TẦM NHÌN] BÌNH THƯỜNG",
+        VisNVG = "[TẦM NHÌN] HỒNG NGOẠI (NVG)",
+        VisFLIR = "[TẦM NHÌN] QUÉT NHIỆT (FLIR)",
+        Settings = "[CÀI ĐẶT HỆ THỐNG]",
+        ListTitle = "[ CHỌN LƯỚI MỤC TIÊU ]",
+        SetTitle = "[ BẢNG CÀI ĐẶT ]",
+        LangBtn = "NGÔN NGỮ: TIẾNG VIỆT",
+        AnimBtn = "HIỆU ỨNG: BẬT",
+        Close = "[ĐÓNG]"
+    },
+    RU = {
+        Title = "[ ТАКТИЧЕСКИЙ КОМПЛЕКС - LONG ]",
+        Lock = "[ЦЕЛЬ] ЗАХВАТ: ",
+        TargetList = "[ДАННЫЕ] СПИСОК ЦЕЛЕЙ",
+        DroneOff = "[ДРОН] FPV: ВЫКЛ",
+        DroneOn = "[ДРОН] FPV: ВКЛ",
+        Reset = "[СИСТЕМА] СБРОС",
+        Strike = "[УДАР] АВИАУДАР B52",
+        StrikeActive = "[УДАР] АТАКА...",
+        DefenseOff = "[ЗАЩИТА] CIWS: ВЫКЛ",
+        DefenseOn = "[ЗАЩИТА] CIWS: ВКЛ",
+        DeadHandOff = "[ОТВЕТ] МЕРТВАЯ РУКА: ВЫКЛ",
+        DeadHandOn = "[ОТВЕТ] МЕРТВАЯ РУКА: ВКЛ",
+        AutoSpamOff = "[СПАМ] АВТО: ВЫКЛ",
+        AutoSpamOn = "[СПАМ] АВТО: ВКЛ",
+        VisNormal = "[ОБЗОР] НОРМА",
+        VisNVG = "[ОБЗОР] ПНВ (NVG)",
+        VisFLIR = "[ОБЗОР] ТЕПЛОВИЗОР",
+        Settings = "[НАСТРОЙКИ СИСТЕМЫ]",
+        ListTitle = "[ СЕТЬ ВЫБОРА ЦЕЛЕЙ ]",
+        SetTitle = "[ ПАНЕЛЬ НАСТРОЕК ]",
+        LangBtn = "ЯЗЫК: РУССКИЙ",
+        AnimBtn = "АНИМАЦИЯ: ВКЛ",
+        Close = "[ЗАКРЫТЬ]"
+    }
+}
+
+if CoreGui:FindFirstChild("FTAP_FPV_OSD_System") then
+    CoreGui.FTAP_FPV_OSD_System:Destroy()
+end
+
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "FTAP_FPV_OSD_System"
+ScreenGui.Parent = gethui and gethui() or CoreGui
+
+-- ==================== KHUNG NÚT TRÒN & RỒNG BAY ====================
+local ToggleContainer = Instance.new("Frame", ScreenGui)
+ToggleContainer.Size = UDim2.new(0, 80, 0, 80)
+ToggleContainer.Position = UDim2.new(0.015, 0, 0.2, 0)
+ToggleContainer.BackgroundTransparency = 1
+ToggleContainer.Active = true
+ToggleContainer.Draggable = true
+
+local ToggleCircleBtn = Instance.new("TextButton", ToggleContainer)
+ToggleCircleBtn.Size = UDim2.new(0, 44, 0, 44)
+ToggleCircleBtn.AnchorPoint = Vector2.new(0.5, 0.5)
+ToggleCircleBtn.Position = UDim2.new(0.5, 0, 0.5, 0)
+ToggleCircleBtn.BackgroundColor3 = Color3.fromRGB(10, 20, 13)
+ToggleCircleBtn.Text = "◎"
+ToggleCircleBtn.TextColor3 = Color3.fromRGB(0, 255, 127)
+ToggleCircleBtn.Font = Enum.Font.Code
+ToggleCircleBtn.TextSize = 20
+Instance.new("UICorner", ToggleCircleBtn).CornerRadius = UDim.new(1, 0)
+Instance.new("UIStroke", ToggleCircleBtn).Color = Color3.fromRGB(0, 200, 90)
+Instance.new("UIStroke", ToggleCircleBtn).Thickness = 1.5
+
+local DragonOrbitLabel = Instance.new("ImageLabel", ToggleContainer)
+DragonOrbitLabel.Size = UDim2.new(0, 52, 0, 52)
+DragonOrbitLabel.AnchorPoint = Vector2.new(0.5, 0.5)
+DragonOrbitLabel.BackgroundTransparency = 1
+DragonOrbitLabel.Image = "rbxassetid://15534710681"
+
+local dragonAngle = 0
+RunService.RenderStepped:Connect(function(dt)
+    if ToggleContainer and ToggleContainer.Parent then
+        dragonAngle = dragonAngle + (dt * 2.5)
+        DragonOrbitLabel.Position = UDim2.new(0, 40 + math.cos(dragonAngle) * 36, 0, 40 + math.sin(dragonAngle) * 36)
+    end
+end)
+
+-- ==================== MAIN CONTROL MENU ====================
+local Main = Instance.new("Frame", ScreenGui)
+Main.Size = UDim2.new(0, 210, 0, 345)
+Main.Position = UDim2.new(0.02, 0, 0.3, 0)
+Main.BackgroundColor3 = Color3.fromRGB(10, 18, 12)
+Main.Active = true
+Main.Draggable = true
+Instance.new("UICorner", Main).CornerRadius = UDim.new(0, 2)
+Instance.new("UIStroke", Main).Color = Color3.fromRGB(0, 160, 75)
+Instance.new("UIStroke", Main).Thickness = 1.5
+
+local Title = Instance.new("TextLabel", Main)
+Title.Size = UDim2.new(1, 0, 0, 28)
+Title.Text = Strings[currentLang].Title
+Title.TextColor3 = Color3.fromRGB(0, 255, 127)
+Title.BackgroundColor3 = Color3.fromRGB(14, 26, 17)
+Title.Font = Enum.Font.Code
+Title.TextSize = 9
+Instance.new("UICorner", Title).CornerRadius = UDim.new(0, 2)
+
+local function templateButton(parent, posY, text, color)
+    local btn = Instance.new("TextButton", parent)
+    btn.Size = UDim2.new(0.92, 0, 0, 26)
+    btn.Position = UDim2.new(0.04, 0, 0, posY)
+    btn.Text = text
+    btn.BackgroundColor3 = color or Color3.fromRGB(15, 25, 18)
+    btn.TextColor3 = Color3.fromRGB(0, 230, 110)
+    btn.Font = Enum.Font.Code
+    btn.TextSize = 9
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 2)
+    Instance.new("UIStroke", btn).Color = Color3.fromRGB(0, 120, 55)
+    return btn
+end
+
+local LockBtn = templateButton(Main, 34, Strings[currentLang].Lock .. "0")
+local OpenListBtn = templateButton(Main, 64, Strings[currentLang].TargetList)
+local DriveBtn = templateButton(Main, 94, Strings[currentLang].DroneOff)
+local EmergencyBtn = templateButton(Main, 124, Strings[currentLang].Reset)
+local B52Btn = templateButton(Main, 154, Strings[currentLang].Strike, Color3.fromRGB(35, 20, 15))
+local DefenseBtn = templateButton(Main, 184, Strings[currentLang].DefenseOff)
+local DeadHandBtn = templateButton(Main, 214, Strings[currentLang].DeadHandOff, Color3.fromRGB(40, 15, 15))
+local AutoSpamBtn = templateButton(Main, 244, Strings[currentLang].AutoSpamOn, Color3.fromRGB(15, 35, 25))
+local VisionBtn = templateButton(Main, 274, Strings[currentLang].VisNormal, Color3.fromRGB(15, 25, 18))
+local SettingsOpenBtn = templateButton(Main, 304, Strings[currentLang].Settings, Color3.fromRGB(18, 30, 22))
+
+ToggleCircleBtn.MouseButton1Click:Connect(function()
+    menuVisible = not menuVisible
+    if animEnabled then
+        local targetSize = menuVisible and UDim2.new(0, 210, 0, 345) or UDim2.new(0, 0, 0, 0)
+        TweenService:Create(Main, TweenInfo.new(0.25), {Size = targetSize}):Play()
+        task.wait(0.25)
+    end
+    Main.Visible = menuVisible
+end)
+
+-- ==================== QUÉT VẬT THỂ SPAM ====================
+AutoSpamBtn.MouseButton1Click:Connect(function()
+    autoScanSpammed = not autoScanSpammed
+    if autoScanSpammed then
+        AutoSpamBtn.Text = Strings[currentLang].AutoSpamOn
+        AutoSpamBtn.BackgroundColor3 = Color3.fromRGB(15, 35, 25)
+    else
+        AutoSpamBtn.Text = Strings[currentLang].AutoSpamOff
+        AutoSpamBtn.BackgroundColor3 = Color3.fromRGB(30, 20, 20)
+    end
+end)
+
+local function scanForSpammedItems()
+    local availableParts = {}
+    for _, b in ipairs(selectedBombs) do
+        if b and b.Parent and b:IsA("BasePart") and not b.Anchored then table.insert(availableParts, b) end
+    end
+    if autoScanSpammed then
+        for _, obj in ipairs(Workspace:GetChildren()) do
+            if obj:IsA("Tool") then
+                for _, child in ipairs(obj:GetDescendants()) do
+                    if child:IsA("BasePart") and not child.Anchored then
+                        local exists = false
+                        for _, p in ipairs(availableParts) do if p == child then exists = true break end end
+                        if not exists then table.insert(availableParts, child) end
+                    end
+                end
+            elseif obj:IsA("BasePart") and not obj.Anchored then
+                local isValid = true
+                for _, p in ipairs(Players:GetPlayers()) do
+                    if p.Character and obj:IsDescendantOf(p.Character) then isValid = false break end
+                end
+                if isValid then
+                    local exists = false
+                    for _, part in ipairs(availableParts) do if part == obj then exists = true break end end
+                    if not exists then table.insert(availableParts, obj) end
+                end
+            end
+        end
+    end
+    return availableParts
+end
+
+-- ==================== CHỨC NĂNG TẦM NHÌN ====================
+local function updateVision()
+    if visionMode == 0 then
+        ccEffect.Enabled = false
+        VisionBtn.Text = Strings[currentLang].VisNormal
+        VisionBtn.BackgroundColor3 = Color3.fromRGB(15, 25, 18)
+        for _, hl in pairs(flirHighlights) do if hl and hl.Parent then hl:Destroy() end end
+        flirHighlights = {}
+    elseif visionMode == 1 then
+        ccEffect.Enabled = true
+        ccEffect.Brightness = 0.15; ccEffect.Contrast = 0.5; ccEffect.Saturation = -0.1
+        ccEffect.TintColor = Color3.fromRGB(100, 255, 120)
+        VisionBtn.Text = Strings[currentLang].VisNVG
+        VisionBtn.BackgroundColor3 = Color3.fromRGB(15, 45, 25)
+        for _, hl in pairs(flirHighlights) do if hl and hl.Parent then hl:Destroy() end end
+        flirHighlights = {}
+    elseif visionMode == 2 then
+        ccEffect.Enabled = true
+        ccEffect.Brightness = -0.1; ccEffect.Contrast = 0.4; ccEffect.Saturation = -1
+        ccEffect.TintColor = Color3.fromRGB(220, 220, 255)
+        VisionBtn.Text = Strings[currentLang].VisFLIR
+        VisionBtn.BackgroundColor3 = Color3.fromRGB(25, 25, 50)
+    end
+end
+
+RunService.Heartbeat:Connect(function()
+    if visionMode == 2 then
+        for _, p in ipairs(Players:GetPlayers()) do
+            if p ~= LocalPlayer and p.Character then
+                if not p.Character:FindFirstChild("FLIR_Highlight") then
+                    local hl = Instance.new("Highlight")
+                    hl.Name = "FLIR_Highlight"
+                    hl.FillColor = Color3.fromRGB(255, 255, 255)
+                    hl.OutlineColor = Color3.fromRGB(255, 50, 50)
+                    hl.FillTransparency = 0.1
+                    hl.Parent = p.Character
+                    table.insert(flirHighlights, hl)
+                end
+            end
+        end
+    end
+end)
+
+VisionBtn.MouseButton1Click:Connect(function()
+    visionMode = (visionMode + 1) % 3
+    updateVision()
+end)
+
+-- ==================== BẢNG CÀI ĐẶT ====================
+local SettingsFrame = Instance.new("Frame", ScreenGui)
+SettingsFrame.Size = UDim2.new(0, 220, 0, 150)
+SettingsFrame.Position = UDim2.new(0.16, 0, 0.3, 0)
+SettingsFrame.BackgroundColor3 = Color3.fromRGB(10, 18, 12)
+SettingsFrame.Active = true
+SettingsFrame.Draggable = true
+SettingsFrame.Visible = false
+Instance.new("UICorner", SettingsFrame).CornerRadius = UDim.new(0, 2)
+Instance.new("UIStroke", SettingsFrame).Color = Color3.fromRGB(0, 160, 75)
+
+local SetTitle = Instance.new("TextLabel", SettingsFrame)
+SetTitle.Size = UDim2.new(1, 0, 0, 28)
+SetTitle.Text = Strings[currentLang].SetTitle
+SetTitle.TextColor3 = Color3.fromRGB(0, 255, 127)
+SetTitle.BackgroundColor3 = Color3.fromRGB(14, 26, 17)
+SetTitle.Font = Enum.Font.Code
+SetTitle.TextSize = 11
+
+local LangToggleBtn = templateButton(SettingsFrame, 36, Strings[currentLang].LangBtn)
+local AnimToggleBtn = templateButton(SettingsFrame, 72, Strings[currentLang].AnimBtn)
+local CloseSetBtn = templateButton(SettingsFrame, 108, Strings[currentLang].Close)
+
+local function updateTexts()
+    local s = Strings[currentLang]
+    Title.Text = s.Title
+    LockBtn.Text = s.Lock .. #selectedBombs
+    OpenListBtn.Text = s.TargetList
+    DriveBtn.Text = isSteering and s.DroneOn or s.DroneOff
+    EmergencyBtn.Text = s.Reset
+    B52Btn.Text = b52Active and s.StrikeActive or s.Strike
+    DefenseBtn.Text = antiMissileActive and s.DefenseOn or s.DefenseOff
+    DeadHandBtn.Text = deadHandActive and s.DeadHandOn or s.DeadHandOff
+    AutoSpamBtn.Text = autoScanSpammed and s.AutoSpamOn or s.AutoSpamOff
+    if visionMode == 0 then VisionBtn.Text = s.VisNormal
+    elseif visionMode == 1 then VisionBtn.Text = s.VisNVG
+    else VisionBtn.Text = s.VisFLIR end
+    SettingsOpenBtn.Text = s.Settings
+    SetTitle.Text = s.SetTitle
+    LangToggleBtn.Text = s.LangBtn
+    AnimToggleBtn.Text = s.AnimBtn
+    CloseSetBtn.Text = s.Close
+end
+
+SettingsOpenBtn.MouseButton1Click:Connect(function() SettingsFrame.Visible = not SettingsFrame.Visible end)
+CloseSetBtn.MouseButton1Click:Connect(function() SettingsFrame.Visible = false end)
+LangToggleBtn.MouseButton1Click:Connect(function() currentLang = (currentLang == "VN") and "RU" or "VN"; updateTexts() end)
+AnimToggleBtn.MouseButton1Click:Connect(function() animEnabled = not animEnabled end)
+
+-- ==================== BÀN TAY TỬ THẦN (DEAD HAND) ====================
+local PromptFrame = Instance.new("Frame", ScreenGui)
+PromptFrame.Size = UDim2.new(0, 320, 0, 140)
+PromptFrame.Position = UDim2.new(0.5, -160, 0.4, -70)
+PromptFrame.BackgroundColor3 = Color3.fromRGB(20, 10, 10)
+PromptFrame.Visible = false
+Instance.new("UICorner", PromptFrame).CornerRadius = UDim.new(0, 4)
+Instance.new("UIStroke", PromptFrame).Color = Color3.fromRGB(255, 50, 50)
+
+local PromptTitle = Instance.new("TextLabel", PromptFrame)
+PromptTitle.Size = UDim2.new(1, 0, 0, 30)
+PromptTitle.BackgroundColor3 = Color3.fromRGB(40, 15, 15)
+PromptTitle.Text = "[ HỆ THỐNG CẢNH BÁO SỚM ]"
+PromptTitle.TextColor3 = Color3.fromRGB(255, 80, 80)
+PromptTitle.Font = Enum.Font.Code
+
+local PromptMsg = Instance.new("TextLabel", PromptFrame)
+PromptMsg.Size = UDim2.new(1, -20, 0, 50)
+PromptMsg.Position = UDim2.new(0, 10, 0, 40)
+PromptMsg.BackgroundTransparency = 1
+PromptMsg.Text = "PHÁT HIỆN BỊ TẤN CÔNG!\nKÍCH HOẠT BÀN TAY TỬ THẦN (B52)?"
+PromptMsg.TextColor3 = Color3.fromRGB(255, 200, 200)
+PromptMsg.Font = Enum.Font.Code
+
+local YesBtn = Instance.new("TextButton", PromptFrame)
+YesBtn.Size = UDim2.new(0, 130, 0, 35)
+YesBtn.Position = UDim2.new(0, 20, 0, 95)
+YesBtn.BackgroundColor3 = Color3.fromRGB(80, 20, 20)
+YesBtn.Text = "ĐỒNG Ý (10s)"
+YesBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+YesBtn.Font = Enum.Font.Code
+Instance.new("UICorner", YesBtn).CornerRadius = UDim.new(0, 3)
+
+local NoBtn = Instance.new("TextButton", PromptFrame)
+NoBtn.Size = UDim2.new(0, 130, 0, 35)
+NoBtn.Position = UDim2.new(1, -150, 0, 95)
+NoBtn.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+NoBtn.Text = "BỎ QUA"
+NoBtn.TextColor3 = Color3.fromRGB(200, 200, 200)
+NoBtn.Font = Enum.Font.Code
+Instance.new("UICorner", NoBtn).CornerRadius = UDim.new(0, 3)
+
+local function executeDeadHandStrike()
+    local myChar = LocalPlayer.Character
+    if not myChar or not myChar:FindFirstChild("HumanoidRootPart") then return end
+    local myHrp = myChar.HumanoidRootPart
+    local enemiesHrp = {}
+    
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= LocalPlayer and p.Character then
+            local enemyHrp = p.Character:FindFirstChild("HumanoidRootPart")
+            local enemyHum = p.Character:FindFirstChildOfClass("Humanoid")
+            if enemyHrp and enemyHum and enemyHum.Health > 0 and (enemyHrp.Position - myHrp.Position).Magnitude < 500 then
+                table.insert(enemiesHrp, enemyHrp)
+            end
+        end
+    end
+    
+    if #enemiesHrp > 0 then
+        local availableParts = scanForSpammedItems()
+        for i, targetHrp in ipairs(enemiesHrp) do
+            local bomb = availableParts[i] or availableParts[math.random(1, #availableParts)]
+            if bomb and bomb.Parent then
+                task.spawn(function()
+                    bomb.Anchored = false
+                    pcall(function() bomb:SetNetworkOwner(LocalPlayer) end)
+                    local dropPos = targetHrp.Position + Vector3.new(math.random(-60, 60), 2200, math.random(-60, 60))
+                    bomb.CFrame = CFrame.new(dropPos)
+                    
+                    local startTime = tick()
+                    while bomb and bomb.Parent and targetHrp and targetHrp.Parent do
+                        if tick() - startTime > 6 then break end
+                        bomb.CanCollide = false
+                        local curPos, tgtPos = bomb.Position, targetHrp.Position
+                        if (curPos - tgtPos).Magnitude < 25 then
+                            Instance.new("Explosion", Workspace).Position = bomb.Position
+                            break
+                        else
+                            local dir = (tgtPos - curPos).Unit
+                            bomb.CFrame = CFrame.new(curPos + dir * 350 * 0.03, tgtPos) * CFrame.Angles(math.rad(90), 0, 0)
+                            bomb.AssemblyLinearVelocity = dir * 350
+                        end
+                        task.wait(0.03)
+                    end
+                end)
+            end
+        end
+    end
+end
+
+local function showDeadHandPrompt()
+    if promptActive then return end
+    promptActive = true; promptCancelled = false
+    PromptFrame.Visible = true
+    task.spawn(function()
+        for i = 10, 1, -1 do
+            if promptCancelled or not promptActive then break end
+            YesBtn.Text = "ĐỒNG Ý (" .. i .. "s)"
+            task.wait(1)
+        end
+        PromptFrame.Visible = false
+        if promptActive and not promptCancelled then executeDeadHandStrike() end
+        promptActive = false
+    end)
+end
+
+YesBtn.MouseButton1Click:Connect(function()
+    if promptActive then
+        promptCancelled = false; promptActive = false
+        PromptFrame.Visible = false; executeDeadHandStrike()
+    end
+end)
+
+NoBtn.MouseButton1Click:Connect(function()
+    promptCancelled = true; promptActive = false; PromptFrame.Visible = false
+end)
+
+local function setupDamageDetector(character)
+    if healthConn then healthConn:Disconnect() end
+    local humanoid = character:WaitForChild("Humanoid", 3)
+    if humanoid then
+        local lastHealth = humanoid.Health
+        healthConn = humanoid.HealthChanged:Connect(function(newHealth)
+            if newHealth < lastHealth and deadHandActive and not promptActive then showDeadHandPrompt() end
+            lastHealth = newHealth
+        end)
+    end
+end
+LocalPlayer.CharacterAdded:Connect(setupDamageDetector)
+if LocalPlayer.Character then setupDamageDetector(LocalPlayer.Character) end
+
+DeadHandBtn.MouseButton1Click:Connect(function()
+    deadHandActive = not deadHandActive
+    if deadHandActive then
+        DeadHandBtn.Text = Strings[currentLang].DeadHandOn
+        DeadHandBtn.BackgroundColor3 = Color3.fromRGB(60, 20, 20)
+    else
+        DeadHandBtn.Text = Strings[currentLang].DeadHandOff
+        DeadHandBtn.BackgroundColor3 = Color3.fromRGB(40, 15, 15)
+        if promptActive then promptCancelled = true; promptActive = false; PromptFrame.Visible = false end
+    end
+end)
+
+-- ==================== B52 OANH TẠC LIÊN TỤC THEO ĐỢT (WAVE B52 STRIKE) ====================
+B52Btn.MouseButton1Click:Connect(function()
+    if b52Active then return end
+    b52Active = true
+    B52Btn.Text = Strings[currentLang].StrikeActive
+    B52Btn.BackgroundColor3 = Color3.fromRGB(50, 25, 15)
+    
+    local cam = Workspace.CurrentCamera
+    cam.CameraType = Enum.CameraType.Scriptable
+    local root = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+    local skyPos = (root and root.Position or Vector3.zero) + Vector3.new(0, 3500, 0)
+    cam.CFrame = CFrame.new(skyPos, skyPos + Vector3.new(0, -1, -0.01))
+    
+    task.spawn(function()
+        local strikeDuration = 20
+        local startTime = tick()
+        local usedParts = {}
+        
+        while b52Active and (tick() - startTime < strikeDuration) do
+            local targetsHRP = {}
+            for _, p in ipairs(Players:GetPlayers()) do
+                if p ~= LocalPlayer and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+                    local hum = p.Character:FindFirstChildOfClass("Humanoid")
+                    if hum and hum.Health > 0 then
+                        table.insert(targetsHRP, p.Character.HumanoidRootPart)
+                    end
+                end
+            end
+            
+            local currentParts = scanForSpammedItems()
+            local batchParts = {}
+            
+            for _, part in ipairs(currentParts) do
+                if not usedParts[part] and part and part.Parent then
+                    table.insert(batchParts, part)
+                end
+            end
+            
+            if #targetsHRP > 0 and #batchParts > 0 then
+                local waveSize = math.min(#batchParts, 4)
+                
+                for i = 1, waveSize do
+                    local bomb = batchParts[i]
+                    usedParts[bomb] = true
+                    
+                    local targetIndex = math.random(1, #targetsHRP)
+                    local assignedTarget = targetsHRP[targetIndex]
+                    
+                    if assignedTarget and bomb and bomb.Parent then
+                        task.spawn(function()
+                            bomb.Anchored = false
+                            pcall(function() bomb:SetNetworkOwner(LocalPlayer) end)
+                            
+                            local dropPos = assignedTarget.Position + Vector3.new(math.random(-80, 80), 2200, math.random(-80, 80))
+                            bomb.CFrame = CFrame.new(dropPos)
+                            
+                            local skyPart = Instance.new("Part", Workspace)
+                            skyPart.Size = Vector3.new(1, 1, 1)
+                            skyPart.Position = dropPos
+                            skyPart.Anchored = true
+                            skyPart.Transparency = 1
+                            
+                            local redBeam = Instance.new("Beam", bomb)
+                            redBeam.Attachment0 = Instance.new("Attachment", skyPart)
+                            redBeam.Attachment1 = Instance.new("Attachment", bomb)
+                            redBeam.Color = ColorSequence.new(Color3.fromRGB(255, 50, 50))
+                            redBeam.Width0 = 2.0; redBeam.Width1 = 1.0
+                            
+                            local bStart = tick()
+                            while bomb and bomb.Parent and assignedTarget and assignedTarget.Parent do
+                                if tick() - bStart > 6 then break end
+                                bomb.CanCollide = false
+                                local curPos, tgtPos = bomb.Position, assignedTarget.Position
+                                if (curPos - tgtPos).Magnitude < 20 then
+                                    Instance.new("Explosion", Workspace).Position = bomb.Position
+                                    bomb:Destroy()
+                                    break
+                                else
+                                    local dir = (tgtPos - curPos).Unit
+                                    bomb.CFrame = CFrame.new(curPos + dir * 380 * 0.03, tgtPos) * CFrame.Angles(math.rad(90), 0, 0)
+                                    bomb.AssemblyLinearVelocity = dir * 380
+                                end
+                                task.wait(0.03)
+                            end
+                            if skyPart then skyPart:Destroy() end
+                        end)
+                    end
+                end
+            end
+            
+            task.wait(0.5)
+        end
+        
+        b52Active = false
+        B52Btn.Text = Strings[currentLang].Strike
+        B52Btn.BackgroundColor3 = Color3.fromRGB(35, 20, 15)
+        if LocalPlayer.Character then
+            cam.CameraType = Enum.CameraType.Custom
+            cam.CameraSubject = LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+        end
+    end)
+end)
+
+-- ==================== CÁC CHỨC NĂNG PHỤ KHÁC ====================
+DriveBtn.MouseButton1Click:Connect(function()
+    isSteering = not isSteering
+    DriveBtn.Text = isSteering and Strings[currentLang].DroneOn or Strings[currentLang].DroneOff
+    DriveBtn.BackgroundColor3 = isSteering and Color3.fromRGB(20, 40, 20) or Color3.fromRGB(15, 25, 18)
+end)
+
+DefenseBtn.MouseButton1Click:Connect(function()
+    antiMissileActive = not antiMissileActive
+    DefenseBtn.Text = antiMissileActive and Strings[currentLang].DefenseOn or Strings[currentLang].DefenseOff
+    DefenseBtn.BackgroundColor3 = antiMissileActive and Color3.fromRGB(20, 40, 20) or Color3.fromRGB(15, 25, 18)
+end)
+
+EmergencyBtn.MouseButton1Click:Connect(function()
+    b52Active = false
+    deadHandActive = false
+    antiMissileActive = false
+    isSteering = false
+    promptActive = false
+    promptCancelled = true
+    PromptFrame.Visible = false
+    selectedBombs = {}
+    selectedTargets = {}
+    updateTexts()
+end)
+
+print("FTAP FULL SYSTEM LOADED SUCCESSFULLY.")
